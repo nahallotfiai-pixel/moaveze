@@ -1,0 +1,316 @@
+<?php
+/**
+ * Plugin Name: معاوضه پلاس (Moaveze Plus)
+ * Plugin URI: https://tabrizhome.com
+ * Description: سیستم پیشرفته معاوضه ملک با قابلیت تطبیق هوشمند، معاوضه زنجیره‌ای، نقشه تعاملی و مدیریت کامل
+ * Version: 1.0.0
+ * Author: تبریز هوم
+ * Author URI: https://tabrizhome.com
+ * License: GPL v2 or later
+ * License URI: https://www.gnu.org/licenses/gpl-2.0.html
+ * Text Domain: moaveze-plus
+ * Domain Path: /languages
+ * Requires at least: 5.8
+ * Requires PHP: 7.4
+ */
+
+if (!defined('ABSPATH')) {
+    exit;
+}
+
+// Plugin Constants
+define('MOAVEZE_PLUS_VERSION', '1.0.0');
+define('MOAVEZE_PLUS_FILE', __FILE__);
+define('MOAVEZE_PLUS_PATH', plugin_dir_path(__FILE__));
+define('MOAVEZE_PLUS_URL', plugin_dir_url(__FILE__));
+define('MOAVEZE_PLUS_BASENAME', plugin_basename(__FILE__));
+define('MOAVEZE_PLUS_DB_VERSION', '1.0.0');
+
+/**
+ * Main Plugin Class
+ */
+final class Moaveze_Plus {
+
+    /**
+     * Single instance
+     */
+    private static $instance = null;
+
+    /**
+     * Get instance
+     */
+    public static function get_instance() {
+        if (null === self::$instance) {
+            self::$instance = new self();
+        }
+        return self::$instance;
+    }
+
+    /**
+     * Constructor
+     */
+    private function __construct() {
+        $this->includes();
+        $this->init_hooks();
+    }
+
+    /**
+     * Include required files
+     */
+    private function includes() {
+        // Core
+        require_once MOAVEZE_PLUS_PATH . 'includes/class-database.php';
+        require_once MOAVEZE_PLUS_PATH . 'includes/class-post-types.php';
+        require_once MOAVEZE_PLUS_PATH . 'includes/class-taxonomies.php';
+        require_once MOAVEZE_PLUS_PATH . 'includes/class-meta-fields.php';
+
+        // Admin
+        if (is_admin()) {
+            require_once MOAVEZE_PLUS_PATH . 'admin/class-admin.php';
+            require_once MOAVEZE_PLUS_PATH . 'admin/class-settings.php';
+            require_once MOAVEZE_PLUS_PATH . 'admin/class-dashboard.php';
+            require_once MOAVEZE_PLUS_PATH . 'admin/class-consultant-panel.php';
+        }
+
+        // Frontend
+        require_once MOAVEZE_PLUS_PATH . 'frontend/class-frontend.php';
+        require_once MOAVEZE_PLUS_PATH . 'frontend/class-submission-form.php';
+        require_once MOAVEZE_PLUS_PATH . 'frontend/class-listings.php';
+        require_once MOAVEZE_PLUS_PATH . 'frontend/class-map.php';
+        require_once MOAVEZE_PLUS_PATH . 'frontend/class-shortcodes.php';
+
+        // Modules
+        require_once MOAVEZE_PLUS_PATH . 'includes/modules/class-matching.php';
+        require_once MOAVEZE_PLUS_PATH . 'includes/modules/class-offers.php';
+        require_once MOAVEZE_PLUS_PATH . 'includes/modules/class-monetization.php';
+        require_once MOAVEZE_PLUS_PATH . 'includes/modules/class-notifications.php';
+        require_once MOAVEZE_PLUS_PATH . 'includes/modules/class-houzez-integration.php';
+
+        // REST API
+        require_once MOAVEZE_PLUS_PATH . 'includes/api/class-rest-api.php';
+    }
+
+    /**
+     * Initialize hooks
+     */
+    private function init_hooks() {
+        register_activation_hook(MOAVEZE_PLUS_FILE, array($this, 'activate'));
+        register_deactivation_hook(MOAVEZE_PLUS_FILE, array($this, 'deactivate'));
+
+        add_action('init', array($this, 'init'), 0);
+        add_action('wp_enqueue_scripts', array($this, 'enqueue_frontend_assets'));
+        add_action('admin_enqueue_scripts', array($this, 'enqueue_admin_assets'));
+    }
+
+    /**
+     * Plugin activation
+     */
+    public function activate() {
+        // Create database tables
+        Moaveze_Database::create_tables();
+
+        // Register post types (for flush)
+        Moaveze_Post_Types::register();
+        Moaveze_Taxonomies::register();
+
+        // Flush rewrite rules
+        flush_rewrite_rules();
+
+        // Set default options
+        $this->set_default_options();
+
+        // Store plugin version
+        update_option('moaveze_plus_version', MOAVEZE_PLUS_VERSION);
+        update_option('moaveze_plus_db_version', MOAVEZE_PLUS_DB_VERSION);
+    }
+
+    /**
+     * Plugin deactivation
+     */
+    public function deactivate() {
+        flush_rewrite_rules();
+    }
+
+    /**
+     * Initialize plugin
+     */
+    public function init() {
+        // Load text domain
+        load_plugin_textdomain('moaveze-plus', false, dirname(MOAVEZE_PLUS_BASENAME) . '/languages');
+
+        // Initialize components
+        Moaveze_Post_Types::register();
+        Moaveze_Taxonomies::register();
+    }
+
+    /**
+     * Enqueue frontend assets
+     */
+    public function enqueue_frontend_assets() {
+        // Main styles
+        wp_enqueue_style(
+            'moaveze-plus-main',
+            MOAVEZE_PLUS_URL . 'assets/css/frontend/main.css',
+            array(),
+            MOAVEZE_PLUS_VERSION
+        );
+
+        // Form styles
+        wp_enqueue_style(
+            'moaveze-plus-form',
+            MOAVEZE_PLUS_URL . 'assets/css/frontend/form.css',
+            array('moaveze-plus-main'),
+            MOAVEZE_PLUS_VERSION
+        );
+
+        // Map styles
+        wp_enqueue_style(
+            'moaveze-plus-map',
+            MOAVEZE_PLUS_URL . 'assets/css/frontend/map.css',
+            array('moaveze-plus-main'),
+            MOAVEZE_PLUS_VERSION
+        );
+
+        // Leaflet Map
+        wp_enqueue_style('leaflet', 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css', array(), '1.9.4');
+        wp_enqueue_script('leaflet', 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js', array(), '1.9.4', true);
+
+        // Main JS
+        wp_enqueue_script(
+            'moaveze-plus-main',
+            MOAVEZE_PLUS_URL . 'assets/js/frontend/main.js',
+            array('jquery', 'leaflet'),
+            MOAVEZE_PLUS_VERSION,
+            true
+        );
+
+        // Form JS
+        wp_enqueue_script(
+            'moaveze-plus-form',
+            MOAVEZE_PLUS_URL . 'assets/js/frontend/form.js',
+            array('jquery', 'moaveze-plus-main'),
+            MOAVEZE_PLUS_VERSION,
+            true
+        );
+
+        // Map JS
+        wp_enqueue_script(
+            'moaveze-plus-map',
+            MOAVEZE_PLUS_URL . 'assets/js/frontend/map.js',
+            array('jquery', 'leaflet', 'moaveze-plus-main'),
+            MOAVEZE_PLUS_VERSION,
+            true
+        );
+
+        // Localize scripts
+        wp_localize_script('moaveze-plus-main', 'moavezePlus', array(
+            'ajaxUrl' => admin_url('admin-ajax.php'),
+            'restUrl' => rest_url('moaveze/v1/'),
+            'nonce' => wp_create_nonce('moaveze_plus_nonce'),
+            'mapCenter' => array(
+                'lat' => get_option('moaveze_map_center_lat', '38.0962'),
+                'lng' => get_option('moaveze_map_center_lng', '46.2738'),
+            ),
+            'mapZoom' => get_option('moaveze_map_zoom', '12'),
+            'strings' => array(
+                'loading' => 'در حال بارگذاری...',
+                'error' => 'خطایی رخ داد',
+                'success' => 'عملیات با موفقیت انجام شد',
+                'confirm_delete' => 'آیا مطمئن هستید؟',
+                'select_location' => 'موقعیت را روی نقشه انتخاب کنید',
+                'no_results' => 'نتیجه‌ای یافت نشد',
+                'match_found' => 'تطابق جدید پیدا شد!',
+            ),
+        ));
+    }
+
+    /**
+     * Enqueue admin assets
+     */
+    public function enqueue_admin_assets($hook) {
+        // Only load on our plugin pages
+        if (strpos($hook, 'moaveze') === false && get_post_type() !== 'moaveze_exchange') {
+            return;
+        }
+
+        wp_enqueue_style(
+            'moaveze-plus-admin',
+            MOAVEZE_PLUS_URL . 'assets/css/admin/admin.css',
+            array(),
+            MOAVEZE_PLUS_VERSION
+        );
+
+        wp_enqueue_script(
+            'moaveze-plus-admin',
+            MOAVEZE_PLUS_URL . 'assets/js/admin/admin.js',
+            array('jquery', 'wp-color-picker'),
+            MOAVEZE_PLUS_VERSION,
+            true
+        );
+
+        wp_localize_script('moaveze-plus-admin', 'moavezeAdmin', array(
+            'ajaxUrl' => admin_url('admin-ajax.php'),
+            'nonce' => wp_create_nonce('moaveze_admin_nonce'),
+        ));
+    }
+
+    /**
+     * Set default options
+     */
+    private function set_default_options() {
+        $defaults = array(
+            // General
+            'moaveze_enable_exchange' => 'yes',
+            'moaveze_require_login' => 'no',
+            'moaveze_auto_approve' => 'no',
+            'moaveze_listings_per_page' => 12,
+
+            // Map
+            'moaveze_map_center_lat' => '38.0962',
+            'moaveze_map_center_lng' => '46.2738',
+            'moaveze_map_zoom' => '12',
+            'moaveze_map_style' => 'default',
+
+            // Monetization
+            'moaveze_monetization_mode' => 'consultant', // consultant, subscription, hybrid
+            'moaveze_subscription_price' => '0',
+            'moaveze_per_contact_price' => '0',
+            'moaveze_vip_enabled' => 'no',
+            'moaveze_boost_enabled' => 'no',
+
+            // Chat
+            'moaveze_chat_enabled' => 'no', // Admin controlled
+            'moaveze_chat_require_approval' => 'yes',
+
+            // Notifications
+            'moaveze_email_notifications' => 'yes',
+            'moaveze_sms_notifications' => 'no',
+            'moaveze_push_notifications' => 'no',
+
+            // Display
+            'moaveze_show_in_houzez' => 'yes',
+            'moaveze_exchange_badge' => 'yes',
+            'moaveze_dark_mode' => 'auto',
+
+            // Privacy
+            'moaveze_hide_contact_info' => 'yes',
+            'moaveze_contact_visible_to' => 'admin', // admin, consultant, subscriber
+        );
+
+        foreach ($defaults as $key => $value) {
+            if (get_option($key) === false) {
+                update_option($key, $value);
+            }
+        }
+    }
+}
+
+/**
+ * Initialize Plugin
+ */
+function moaveze_plus() {
+    return Moaveze_Plus::get_instance();
+}
+
+// Start the plugin
+moaveze_plus();
