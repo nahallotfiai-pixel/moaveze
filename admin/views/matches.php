@@ -61,14 +61,14 @@ $matches = $wpdb->get_results("SELECT * FROM $table_matches ORDER BY match_score
                     <div class="match-body">
                         <div class="match-side match-side-a">
                             <h4><?php echo esc_html($exchange_a->post_title ?? 'ملک A'); ?></h4>
-                            <p class="match-value"><?php echo number_format(get_post_meta($exchange_a->ID ?? 0, '_moaveze_property_value', true)); ?> تومان</p>
+                            <p class="match-value"><?php echo esc_html(Moaveze_Helpers::short_price(get_post_meta($exchange_a->ID ?? 0, '_moaveze_property_value', true))); ?></p>
                         </div>
                         <div class="match-arrow">
                             <span class="dashicons dashicons-leftright"></span>
                         </div>
                         <div class="match-side match-side-b">
                             <h4><?php echo esc_html($exchange_b->post_title ?? 'ملک B'); ?></h4>
-                            <p class="match-value"><?php echo number_format(get_post_meta($exchange_b->ID ?? 0, '_moaveze_property_value', true)); ?> تومان</p>
+                            <p class="match-value"><?php echo esc_html(Moaveze_Helpers::short_price(get_post_meta($exchange_b->ID ?? 0, '_moaveze_property_value', true))); ?></p>
                         </div>
                     </div>
 

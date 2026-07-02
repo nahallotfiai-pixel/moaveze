@@ -57,9 +57,9 @@ class Moaveze_Shortcodes {
                                 <?php if ($district_terms) : ?>
                                     <span><?php echo esc_html($district_terms[0]->name); ?></span>
                                 <?php endif; ?>
-                                <span><?php echo number_format($area); ?> متر</span>
+                                <span><?php echo esc_html(Moaveze_Helpers::to_persian_digits(number_format($area))); ?> متر</span>
                             </div>
-                            <div class="featured-price"><?php echo number_format($value); ?> تومان</div>
+                            <div class="featured-price"><?php echo esc_html(Moaveze_Helpers::short_price($value)); ?></div>
                         </div>
                     </div>
                 <?php endwhile; ?>
@@ -99,7 +99,7 @@ class Moaveze_Shortcodes {
                         </div>
                         <div class="recent-info">
                             <h4><a href="<?php the_permalink(); ?>"><?php the_title(); ?></a></h4>
-                            <span class="recent-price"><?php echo number_format($value); ?> تومان</span>
+                            <span class="recent-price"><?php echo esc_html(Moaveze_Helpers::short_price($value)); ?></span>
                             <?php if ($district_terms) : ?>
                                 <span class="recent-district"><?php echo esc_html($district_terms[0]->name); ?></span>
                             <?php endif; ?>

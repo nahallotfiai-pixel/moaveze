@@ -310,7 +310,7 @@ class Moaveze_Wishlist {
                         r.data.items.forEach(function(item){
                             html += '<div class="wishlist-item-card"><div class="wi-body">'
                                 + '<strong>' + (item.property_type || 'هر نوع ملک') + '</strong>'
-                                + '<span>' + (item.min_value ? Number(item.min_value).toLocaleString('fa-IR') + ' تا ' : '') + (item.max_value ? Number(item.max_value).toLocaleString('fa-IR') + ' تومان' : '') + '</span>'
+                                + '<span>' + (item.min_value ? MoavezePlus.formatPriceShort(item.min_value, false) + ' تا ' : '') + (item.max_value ? MoavezePlus.formatPriceShort(item.max_value) : '') + '</span>'
                                 + (item.districts.length ? '<span>مناطق: ' + item.districts.join('، ') + '</span>' : '')
                                 + '</div><button class="delete-wishlist-btn moaveze-btn moaveze-btn-ghost moaveze-btn-sm" data-id="'+item.id+'">حذف</button></div>';
                         });

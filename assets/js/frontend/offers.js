@@ -233,16 +233,16 @@
                         <div class="offer-item-title">
                             <a href="${offer.url}">${offer.title}</a>
                         </div>
-                        <div class="offer-item-meta">${offer.property_type} | ${offer.district} | ${Number(offer.property_value).toLocaleString('fa-IR')} تومان</div>
+                        <div class="offer-item-meta">${offer.property_type} | ${offer.district} | ${MoavezePlus.formatPriceShort(offer.property_value)}</div>
                         <div class="offer-item-details">
-                            ${offer.cash_offered ? `<span class="offer-detail-item">💰 ${Number(offer.cash_offered).toLocaleString('fa-IR')} تومان</span>` : ''}
+                            ${offer.cash_offered ? `<span class="offer-detail-item">💰 ${MoavezePlus.formatPriceShort(offer.cash_offered)}</span>` : ''}
                             ${offer.assets_offered ? `<span class="offer-detail-item">🚗 ${offer.assets_offered.substring(0, 40)}</span>` : ''}
                         </div>
                         ${offer.admin_notes ? `<div style="margin-top:8px;padding:8px 12px;background:#f0fdf4;border-radius:8px;font-size:12px;color:#166534;">💬 ${offer.admin_notes}</div>` : ''}
                     </div>
                     <div class="offer-item-actions">
                         <span class="offer-status-badge badge-${offer.status_color}">${offer.status_label}</span>
-                        <span class="offer-date">${offer.date_human}</span>
+                        <span class="offer-date" title="${MoavezePlus.toJalali(offer.date, true)}">${MoavezePlus.toJalali(offer.date)}</span>
                         ${offer.status === 'pending' ? `<button class="moaveze-btn moaveze-btn-ghost moaveze-btn-sm withdraw-offer-btn" data-offer-id="${offer.id}" style="margin-top:6px;">لغو</button>` : ''}
                     </div>
                 </div>`;

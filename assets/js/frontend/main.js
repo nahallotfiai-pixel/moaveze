@@ -64,6 +64,88 @@
         },
 
         /**
+         * Convert a string of Latin digits to Persian digits for display
+         * (JS counterpart of Moaveze_Helpers::to_persian_digits() in PHP).
+         */
+        toPersianDigits(str) {
+            const map = { '0':'۰','1':'۱','2':'۲','3':'۳','4':'۴','5':'۵','6':'۶','7':'۷','8':'۸','9':'۹' };
+            return String(str).replace(/[0-9]/g, (d) => map[d]);
+        },
+
+        /**
+         * Short price formatter for client-side rendered content (map
+         * popups, offers list, notifications) - mirrors
+         * Moaveze_Helpers::short_price() in PHP so both sides always
+         * agree on formatting, e.g. 45500000000 -> "۴۵.۵ میلیارد تومان".
+         */
+        formatPriceShort(amount, withUnit = true) {
+            amount = Number(amount) || 0;
+            const suffix = withUnit ? ' تومان' : '';
+            const trim = (n) => {
+                const r = Math.round(n * 10) / 10;
+                return (r % 1 === 0) ? String(r) : String(r).replace(/0$/, '').replace(/\.$/, '');
+            };
+
+            let out;
+            if (amount <= 0) {
+                out = '0' + suffix;
+            } else if (amount >= 1000000000000) {
+                out = trim(amount / 1000000000000) + ' هزار میلیارد' + suffix;
+            } else if (amount >= 1000000000) {
+                out = trim(amount / 1000000000) + ' میلیارد' + suffix;
+            } else if (amount >= 1000000) {
+                out = trim(amount / 1000000) + ' میلیون' + suffix;
+            } else {
+                out = amount.toLocaleString('en-US') + suffix;
+            }
+            return MoavezePlus.toPersianDigits(out);
+        },
+
+        /**
+         * Gregorian -> Jalali date conversion (JS counterpart of
+         * Moaveze_Helpers::jalali_date() in PHP), for content rendered
+         * purely client-side (e.g. offers/notifications fetched via AJAX).
+         * Accepts a MySQL datetime string ("2026-07-02 10:30:00") or any
+         * value new Date() can parse.
+         */
+        toJalali(dateStr, withTime = false) {
+            const d = new Date(dateStr.replace(' ', 'T'));
+            if (isNaN(d.getTime())) return '';
+
+            const gy = d.getFullYear(), gm = d.getMonth() + 1, gd = d.getDate();
+            const g_d_m = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334];
+            let gy2 = (gm > 2) ? (gy + 1) : gy;
+            let days = 355666 + (365 * gy) + Math.floor((gy2 + 3) / 4) - Math.floor((gy2 + 99) / 100)
+                + Math.floor((gy2 + 399) / 400) + gd + g_d_m[gm - 1];
+
+            let jy = -1595 + (33 * Math.floor(days / 12053));
+            days %= 12053;
+            jy += 4 * Math.floor(days / 1461);
+            days %= 1461;
+
+            if (days > 365) {
+                jy += Math.floor((days - 1) / 365);
+                days = (days - 1) % 365;
+            }
+
+            let jm, jd;
+            if (days < 186) {
+                jm = 1 + Math.floor(days / 31);
+                jd = 1 + (days % 31);
+            } else {
+                jm = 7 + Math.floor((days - 186) / 30);
+                jd = 1 + ((days - 186) % 30);
+            }
+
+            const pad = (n) => String(n).padStart(2, '0');
+            let out = `${jy}/${pad(jm)}/${pad(jd)}`;
+            if (withTime) {
+                out += ` ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+            }
+            return MoavezePlus.toPersianDigits(out);
+        },
+
+        /**
          * Convert price to Persian text
          */
         priceToText(num) {

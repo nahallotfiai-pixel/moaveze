@@ -46,7 +46,7 @@ $offers = $wpdb->get_results("SELECT * FROM $table_offers ORDER BY created_at DE
                             ?>
                         </td>
                         <td><?php echo esc_html($offer->offer_type); ?></td>
-                        <td><?php echo number_format($offer->cash_offered); ?> تومان</td>
+                        <td><?php echo esc_html(Moaveze_Helpers::short_price($offer->cash_offered)); ?></td>
                         <td>
                             <?php
                             $statuses = array(
@@ -57,7 +57,7 @@ $offers = $wpdb->get_results("SELECT * FROM $table_offers ORDER BY created_at DE
                             echo $statuses[$offer->status] ?? $offer->status;
                             ?>
                         </td>
-                        <td><?php echo esc_html(mysql2date('Y/m/d', $offer->created_at)); ?></td>
+                        <td><?php echo esc_html(Moaveze_Helpers::jalali_date($offer->created_at)); ?></td>
                         <td>
                             <button class="button button-small view-offer-btn" data-offer-id="<?php echo esc_attr($offer->id); ?>">جزئیات</button>
                         </td>

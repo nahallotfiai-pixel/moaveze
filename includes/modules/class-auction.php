@@ -75,7 +75,7 @@ class Moaveze_Auction {
         $min_bid = get_post_meta($post_id, '_moaveze_auction_min_bid', true);
         if ($min_bid && $bid_cash < $min_bid) {
             wp_send_json_error(array(
-                'message' => sprintf('حداقل مبلغ پیشنهادی %s تومان است', number_format($min_bid))
+                'message' => sprintf('حداقل مبلغ پیشنهادی %s است', Moaveze_Helpers::short_price($min_bid))
             ));
         }
 
@@ -238,8 +238,8 @@ class Moaveze_Auction {
                 $notif = new Moaveze_Notifications();
                 $notif->send($winner->from_user_id, 'auction_update',
                     'تبریک! شما برنده مزایده شدید! 🎉',
-                    sprintf('پیشنهاد شما برای «%s» با مبلغ %s تومان پذیرفته شد.',
-                        get_the_title($post_id), number_format($winner->cash_offered)),
+                    sprintf('پیشنهاد شما برای «%s» با مبلغ %s پذیرفته شد.',
+                        get_the_title($post_id), Moaveze_Helpers::short_price($winner->cash_offered)),
                     array('post_id' => $post_id, 'url' => get_permalink($post_id))
                 );
 
@@ -309,7 +309,7 @@ class Moaveze_Auction {
                             <div class="moaveze-card-body">
                                 <h3 class="moaveze-card-title"><a href="<?php the_permalink(); ?>"><?php the_title(); ?></a></h3>
                                 <div class="moaveze-card-footer">
-                                    <span class="moaveze-card-price"><?php echo number_format($value); ?> <small>تومان</small></span>
+                                    <span class="moaveze-card-price"><?php echo esc_html(Moaveze_Helpers::short_price($value)); ?></span>
                                     <a href="<?php the_permalink(); ?>" class="moaveze-btn moaveze-btn-sm moaveze-btn-outline">
                                         <?php echo $status === 'active' ? 'شرکت در مزایده' : 'مشاهده نتیجه'; ?>
                                     </a>

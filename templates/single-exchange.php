@@ -117,9 +117,11 @@ $feature_icons = array(
                 </div>
                 <div class="single-hero-price">
                     <span class="price-label">ارزش ملک</span>
-                    <span class="price-value"><?php echo number_format($value); ?> <small>تومان</small></span>
+                    <span class="price-value" title="<?php echo esc_attr(number_format($value) . ' تومان'); ?>">
+                        <?php echo esc_html(Moaveze_Helpers::short_price($value)); ?>
+                    </span>
                     <?php if ($area) : ?>
-                        <span class="price-per-sqm"><?php echo number_format(round($value / $area)); ?> تومان / متر</span>
+                        <span class="price-per-sqm"><?php echo esc_html(Moaveze_Helpers::short_price(round($value / $area))); ?> / متر</span>
                     <?php endif; ?>
                 </div>
             </div>
@@ -235,7 +237,7 @@ $feature_icons = array(
                         <?php endif; ?>
                         <div class="spec-item-v2 spec-item-highlight">
                             <span class="spec-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg></span>
-                            <span class="spec-value"><?php echo $area ? number_format(round($value / $area)) : '—'; ?></span>
+                            <span class="spec-value"><?php echo $area ? esc_html(Moaveze_Helpers::short_price(round($value / $area), false)) : '—'; ?></span>
                             <span class="spec-label">تومان هر متر</span>
                         </div>
                     </div>
@@ -342,9 +344,9 @@ $feature_icons = array(
                                     <div class="cond-text">
                                         <span class="cond-label">محدوده ارزش مورد نظر</span>
                                         <span class="cond-value">
-                                            <?php if ($desired_min) echo number_format($desired_min); ?>
+                                            <?php if ($desired_min) echo esc_html(Moaveze_Helpers::short_price($desired_min, false)); ?>
                                             <?php if ($desired_min && $desired_max) echo ' تا '; ?>
-                                            <?php if ($desired_max) echo number_format($desired_max); ?>
+                                            <?php if ($desired_max) echo esc_html(Moaveze_Helpers::short_price($desired_max, false)); ?>
                                             تومان
                                         </span>
                                     </div>
@@ -357,7 +359,7 @@ $feature_icons = array(
                                     <div class="cond-text">
                                         <span class="cond-label">مابه‌التفاوت نقدی</span>
                                         <span class="cond-value">
-                                            <?php echo number_format($cash_diff); ?> تومان
+                                            <?php echo esc_html(Moaveze_Helpers::short_price($cash_diff)); ?>
                                             <em>(<?php echo $cash_dir === 'give' ? 'مالک می‌دهد' : 'مالک می‌گیرد'; ?>)</em>
                                         </span>
                                     </div>
@@ -419,7 +421,7 @@ $feature_icons = array(
                         </span>
                         <span class="meta-footer-item">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                            <?php echo esc_html(human_time_diff(get_the_time('U'))); ?> پیش ثبت شده
+                            ثبت شده در <?php echo esc_html(Moaveze_Helpers::jalali_date(get_the_time('U'), 'j F Y')); ?>
                         </span>
                         <span class="meta-footer-item">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>

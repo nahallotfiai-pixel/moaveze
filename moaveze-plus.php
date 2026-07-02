@@ -59,6 +59,7 @@ final class Moaveze_Plus {
      */
     private function includes() {
         // Core
+        require_once MOAVEZE_PLUS_PATH . 'includes/class-helpers.php';
         require_once MOAVEZE_PLUS_PATH . 'includes/class-database.php';
         require_once MOAVEZE_PLUS_PATH . 'includes/class-post-types.php';
         require_once MOAVEZE_PLUS_PATH . 'includes/class-taxonomies.php';

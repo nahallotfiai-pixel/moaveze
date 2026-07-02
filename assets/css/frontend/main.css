@@ -898,3 +898,16 @@
         padding: var(--moaveze-space-4);
     }
 }
+
+
+
+/* ===== Card Date (Jalali) ===== */
+.moaveze-card-date {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    color: var(--moaveze-text-faint);
+    margin-bottom: var(--moaveze-space-2);
+}
+.moaveze-card-date svg { opacity: 0.7; flex-shrink: 0; }

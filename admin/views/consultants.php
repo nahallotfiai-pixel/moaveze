@@ -50,7 +50,7 @@ $consultants = get_users(array('role' => 'moaveze_consultant'));
                         <tr>
                             <td><strong><?php echo esc_html($consultant->display_name); ?></strong></td>
                             <td><?php echo esc_html($consultant->user_email); ?></td>
-                            <td><?php echo esc_html(mysql2date('Y/m/d', $consultant->user_registered)); ?></td>
+                            <td><?php echo esc_html(Moaveze_Helpers::jalali_date($consultant->user_registered)); ?></td>
                             <td>
                                 <?php
                                 global $wpdb;

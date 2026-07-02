@@ -69,7 +69,9 @@
                     weight: 2,
                 }).addTo(this.markerLayer);
 
-                // Popup
+                // Popup (price is read from the already-short-formatted
+                // .moaveze-card-price text on the page, so no extra
+                // conversion needed here)
                 const popupContent = `
                     <div class="moaveze-map-popup">
                         ${image ? `<div class="popup-image"><img src="${image}" alt="${title}"></div>` : ''}
@@ -176,8 +178,8 @@
                     <div class="moaveze-map-popup">
                         ${item.image ? `<div class="popup-image"><img src="${item.image}" alt=""></div>` : ''}
                         <div class="popup-title">${item.title}</div>
-                        <div class="popup-meta">${item.district} | ${item.type} | ${item.area} متر</div>
-                        <div class="popup-price">${Number(item.value).toLocaleString('fa-IR')} تومان</div>
+                        <div class="popup-meta">${item.district} | ${item.type} | ${MoavezePlus.toPersianDigits(item.area)} متر</div>
+                        <div class="popup-price">${MoavezePlus.formatPriceShort(item.value)}</div>
                         <a href="${item.url}" class="popup-link">مشاهده و ارسال پیشنهاد</a>
                     </div>
                 `;
@@ -192,7 +194,7 @@
                         <div class="card-info">
                             <h4>${item.title}</h4>
                             <span class="card-district">${item.district} | ${exchangeLabels[item.exchange] || 'معاوضه'}</span>
-                            <span class="card-price">${Number(item.value).toLocaleString('fa-IR')} تومان</span>
+                            <span class="card-price">${MoavezePlus.formatPriceShort(item.value)}</span>
                         </div>
                     </div>
                 `);

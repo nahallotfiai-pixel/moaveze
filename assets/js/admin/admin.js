@@ -481,7 +481,21 @@
             const a = data.side_a;
             const b = data.side_b;
 
-            const fmt = (n) => Number(n || 0).toLocaleString('en-US');
+            // Short price formatter (میلیون/میلیارد) local to admin.js,
+            // since the frontend MoavezePlus helper object is not loaded
+            // on wp-admin pages. Mirrors Moaveze_Helpers::short_price()
+            // in PHP so admin and frontend agree on formatting.
+            const fmt = (n) => {
+                n = Number(n) || 0;
+                if (n <= 0) return '0 تومان';
+                const trim = (v) => {
+                    const r = Math.round(v * 10) / 10;
+                    return (r % 1 === 0) ? String(r) : String(r);
+                };
+                if (n >= 1000000000) return trim(n / 1000000000) + ' میلیارد تومان';
+                if (n >= 1000000) return trim(n / 1000000) + ' میلیون تومان';
+                return n.toLocaleString('en-US') + ' تومان';
+            };
 
             const sideCard = (side, label) => `
                 <div class="connect-side-card">
@@ -492,7 +506,7 @@
                         <span>${side.district || '—'}</span>
                         <span>${side.area ? side.area + ' متر' : '—'}</span>
                     </div>
-                    <div class="connect-side-price">${fmt(side.value)} تومان</div>
+                    <div class="connect-side-price">${fmt(side.value)}</div>
                     <div class="connect-contact-box">
                         <div class="cc-row"><span class="cc-label">نام:</span> <strong>${side.contact_name || '—'}</strong></div>
                         <div class="cc-row"><span class="cc-label">تماس:</span>

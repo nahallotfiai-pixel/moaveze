@@ -24,13 +24,13 @@ $active_subs = $wpdb->get_var("SELECT COUNT(*) FROM $table_subs WHERE status = '
     <div class="moaveze-stats-grid">
         <div class="moaveze-stat-card moaveze-stat-success">
             <div class="stat-content">
-                <h3><?php echo number_format($total_revenue); ?> تومان</h3>
+                <h3><?php echo esc_html(Moaveze_Helpers::short_price($total_revenue)); ?></h3>
                 <p>درآمد کل</p>
             </div>
         </div>
         <div class="moaveze-stat-card moaveze-stat-primary">
             <div class="stat-content">
-                <h3><?php echo number_format($monthly_revenue); ?> تومان</h3>
+                <h3><?php echo esc_html(Moaveze_Helpers::short_price($monthly_revenue)); ?></h3>
                 <p>درآمد این ماه</p>
             </div>
         </div>
@@ -66,8 +66,8 @@ $active_subs = $wpdb->get_var("SELECT COUNT(*) FROM $table_subs WHERE status = '
                             <td><?php echo esc_html(get_userdata($tx->user_id)->display_name ?? '—'); ?></td>
                             <td><?php echo esc_html($tx->exchange_id); ?></td>
                             <td><?php echo esc_html($tx->view_type); ?></td>
-                            <td><?php echo number_format($tx->payment_amount); ?> تومان</td>
-                            <td><?php echo esc_html(mysql2date('Y/m/d H:i', $tx->created_at)); ?></td>
+                            <td><?php echo esc_html(Moaveze_Helpers::short_price($tx->payment_amount)); ?></td>
+                            <td><?php echo esc_html(Moaveze_Helpers::jalali_date($tx->created_at, 'Y/m/d H:i')); ?></td>
                         </tr>
                     <?php endforeach; ?>
                 </tbody>

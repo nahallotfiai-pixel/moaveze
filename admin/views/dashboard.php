@@ -107,7 +107,7 @@ $activities = Moaveze_Dashboard::get_recent_activity();
                             </div>
                             <div class="plc-submeta">
                                 توسط <?php echo esc_html($item['author']); ?> ·
-                                <?php echo esc_html(human_time_diff(strtotime($item['date']))); ?> پیش
+                                <?php echo esc_html(Moaveze_Helpers::jalali_time_diff($item['date'])); ?>
                             </div>
                         </div>
                         <div class="plc-actions">
@@ -223,7 +223,7 @@ $activities = Moaveze_Dashboard::get_recent_activity();
                                 <?php endif; ?>
                             </td>
                             <td><?php echo esc_html(get_userdata($activity['user_id'])->display_name ?? '—'); ?></td>
-                            <td><?php echo esc_html(mysql2date('Y/m/d H:i', $activity['date'])); ?></td>
+                            <td><?php echo esc_html(Moaveze_Helpers::jalali_date($activity['date'], 'Y/m/d H:i')); ?></td>
                             <td><a href="<?php echo esc_url($activity['link']); ?>" class="button button-small">مشاهده</a></td>
                         </tr>
                     <?php endforeach; ?>

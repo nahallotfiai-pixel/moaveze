@@ -111,7 +111,7 @@ class Moaveze_Analytics {
                 'count'      => (int) $r->count,
                 'avg_value'  => round($r->avg_value),
                 'views'      => (int) $r->total_views,
-                'avg_value_formatted' => number_format(round($r->avg_value / 1000000000, 1), 1) . ' میلیارد',
+                'avg_value_formatted' => Moaveze_Helpers::short_price($r->avg_value, false),
             );
         }
         return $formatted;
@@ -200,9 +200,9 @@ class Moaveze_Analytics {
             'total_revenue'        => (int) ($contact_revenue + $subscription_revenue),
             'active_subscriptions' => (int) $wpdb->get_var("SELECT COUNT(*) FROM $sb WHERE status='active' AND expires_at > NOW()"),
             'formatted'            => array(
-                'contact'      => number_format($contact_revenue) . ' تومان',
-                'subscription' => number_format($subscription_revenue) . ' تومان',
-                'total'        => number_format($contact_revenue + $subscription_revenue) . ' تومان',
+                'contact'      => Moaveze_Helpers::short_price($contact_revenue),
+                'subscription' => Moaveze_Helpers::short_price($subscription_revenue),
+                'total'        => Moaveze_Helpers::short_price($contact_revenue + $subscription_revenue),
             ),
         );
     }

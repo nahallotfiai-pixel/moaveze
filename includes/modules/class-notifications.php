@@ -288,7 +288,8 @@ class Moaveze_Notifications {
                 'data'      => json_decode($n->data, true),
                 'is_read'   => (bool) $n->is_read,
                 'date'      => $n->created_at,
-                'date_human' => human_time_diff(strtotime($n->created_at)) . ' پیش',
+                // Jalali relative time instead of Gregorian human_time_diff()
+                'date_human' => Moaveze_Helpers::jalali_time_diff($n->created_at),
             );
         }
 

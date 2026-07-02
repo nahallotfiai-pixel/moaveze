@@ -138,10 +138,10 @@ class Moaveze_Price_Estimator {
             'comparables_count' => count($comparables),
             'confidence'       => min(95, count($comparables) * 3 + ($district ? 20 : 0) + ($type ? 15 : 0)),
             'formatted'        => array(
-                'value'     => number_format($estimated_value) . ' تومان',
-                'min'       => number_format($min_estimate) . ' تومان',
-                'max'       => number_format($max_estimate) . ' تومان',
-                'per_sqm'   => number_format($price_per_sqm_final) . ' تومان/متر',
+                'value'     => Moaveze_Helpers::short_price($estimated_value),
+                'min'       => Moaveze_Helpers::short_price($min_estimate),
+                'max'       => Moaveze_Helpers::short_price($max_estimate),
+                'per_sqm'   => Moaveze_Helpers::short_price($price_per_sqm_final, false) . '/متر',
             ),
         ));
     }

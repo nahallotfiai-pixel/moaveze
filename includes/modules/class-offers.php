@@ -466,7 +466,8 @@ class Moaveze_Offers {
             'status_color'   => $status_info['color'],
             'admin_notes'    => $offer->admin_notes,
             'date'           => $offer->created_at,
-            'date_human'     => human_time_diff(strtotime($offer->created_at)) . ' پیش',
+            // Jalali relative time instead of Gregorian human_time_diff()
+            'date_human'     => Moaveze_Helpers::jalali_time_diff($offer->created_at),
             'responded_at'   => $offer->responded_at,
             'url'            => get_permalink($offer->post_id),
             'image'          => get_the_post_thumbnail_url($offer->post_id, 'thumbnail'),

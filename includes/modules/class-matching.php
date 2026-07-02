@@ -346,8 +346,8 @@ class Moaveze_Matching {
             'score'  => $cash_score,
             'weight' => $this->weights['cash_balance'],
             'detail' => sprintf('A %s %s | B %s %s',
-                $a->cash_direction, number_format($a->cash_difference),
-                $b->cash_direction, number_format($b->cash_difference)),
+                $a->cash_direction, Moaveze_Helpers::short_price($a->cash_difference, false),
+                $b->cash_direction, Moaveze_Helpers::short_price($b->cash_difference, false)),
         );
         $total_score += $cash_score * $this->weights['cash_balance'];
 
@@ -629,12 +629,12 @@ class Moaveze_Matching {
         $lower = ($a->property_value > $b->property_value) ? $b : $a;
 
         if ($value_diff <= 10000000000) {
-            return sprintf('اختلاف %s تومان. پیشنهاد: ملک کم‌ارزش‌تر + %s تومان نقد.',
-                number_format($value_diff), number_format($value_diff));
+            $short = Moaveze_Helpers::short_price($value_diff);
+            return sprintf('اختلاف %s. پیشنهاد: ملک کم‌ارزش‌تر + %s نقد.', $short, $short);
         }
 
-        return sprintf('اختلاف ارزش %s تومان. نیاز به مذاکره برای جبران اختلاف با نقد یا دارایی اضافی.',
-            number_format($value_diff));
+        return sprintf('اختلاف ارزش %s. نیاز به مذاکره برای جبران اختلاف با نقد یا دارایی اضافی.',
+            Moaveze_Helpers::short_price($value_diff));
     }
 
 

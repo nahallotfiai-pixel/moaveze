@@ -295,22 +295,26 @@ class Moaveze_Listings {
                 <div class="moaveze-card-specs">
                     <?php if ($area) : ?>
                         <span class="spec-item">
-                            <strong><?php echo number_format($area); ?></strong>
+                            <strong><?php echo esc_html(Moaveze_Helpers::to_persian_digits(number_format($area))); ?></strong>
                             <small>متر</small>
                         </span>
                     <?php endif; ?>
                     <?php if ($rooms) : ?>
                         <span class="spec-item">
-                            <strong><?php echo esc_html($rooms); ?></strong>
+                            <strong><?php echo esc_html(Moaveze_Helpers::to_persian_digits($rooms)); ?></strong>
                             <small>اتاق</small>
                         </span>
                     <?php endif; ?>
                 </div>
 
+                <div class="moaveze-card-date">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                    <?php echo esc_html(Moaveze_Helpers::jalali_date(get_the_date('U', $post_id), 'Y/m/d')); ?>
+                </div>
+
                 <div class="moaveze-card-footer">
-                    <span class="moaveze-card-price">
-                        <?php echo number_format($value); ?>
-                        <small>تومان</small>
+                    <span class="moaveze-card-price" title="<?php echo esc_attr(number_format($value) . ' تومان'); ?>">
+                        <?php echo esc_html(Moaveze_Helpers::short_price($value)); ?>
                     </span>
                     <a href="<?php echo get_permalink($post_id); ?>" class="moaveze-btn moaveze-btn-sm moaveze-btn-outline">
                         جزئیات
