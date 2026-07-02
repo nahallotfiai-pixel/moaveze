@@ -31,14 +31,13 @@ class Moaveze_Admin {
             25
         );
 
-        // Dashboard submenu
+        // Rename the auto-created first submenu item from "معاوضه پلاس" to "داشبورد"
         add_submenu_page(
             'moaveze-plus',
-            'داشبورد',
+            'داشبورد معاوضه پلاس',
             'داشبورد',
             'manage_options',
-            'moaveze-plus',
-            array($this, 'render_dashboard')
+            'moaveze-plus'
         );
 
         // All Exchanges
