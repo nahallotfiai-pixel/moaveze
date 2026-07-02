@@ -372,16 +372,28 @@ class Moaveze_Submission_Form {
                                         </select>
                                     </div>
                                     <div class="moaveze-field">
-                                        <label for="desired_districts">مناطق مورد نظر</label>
-                                        <select id="desired_districts" name="desired_districts[]" multiple>
+                                        <label for="desired_districts_toggle">مناطق مورد نظر</label>
+                                        <!--
+                                            UX FIX: previously this was a native
+                                            <select multiple>, which requires holding
+                                            Ctrl/Cmd to select more than one option -
+                                            something most users don't know how to do.
+                                            Replaced with a simple click-to-toggle chip
+                                            picker (checkboxes styled as tags) that
+                                            still submits as desired_districts[].
+                                        -->
+                                        <div class="moaveze-chip-picker" id="desired_districts_toggle">
                                             <?php
                                             if (!is_wp_error($districts)) :
                                                 foreach ($districts as $district) :
                                             ?>
-                                                <option value="<?php echo esc_attr($district->slug); ?>"><?php echo esc_html($district->name); ?></option>
+                                                <label class="moaveze-chip">
+                                                    <input type="checkbox" name="desired_districts[]" value="<?php echo esc_attr($district->slug); ?>">
+                                                    <span><?php echo esc_html($district->name); ?></span>
+                                                </label>
                                             <?php endforeach; endif; ?>
-                                        </select>
-                                        <small>چند منطقه را می‌توانید انتخاب کنید</small>
+                                        </div>
+                                        <small>روی چند منطقه کلیک کنید تا انتخاب شوند (بدون نیاز به کلید Ctrl)</small>
                                     </div>
                                 </div>
                                 <div class="moaveze-field-group moaveze-field-grid-2">

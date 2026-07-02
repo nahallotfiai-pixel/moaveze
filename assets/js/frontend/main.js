@@ -15,18 +15,51 @@
 
         /**
          * Format price inputs with thousand separators
+         *
+         * IMPORTANT: We must strip BOTH Latin (0-9) and Persian/Arabic-Indic
+         * (۰-۹ / ٠-٩) digits, and always render the separators using Latin
+         * digits (toLocaleString('en-US')). If we used 'fa-IR' the field
+         * would display Persian digits, which the \d regex below does not
+         * match on the next keystroke - causing every digit except the
+         * newest one to be wiped out (the exact bug reported).
          */
         initPriceFormatting() {
             $(document).on('input', '.moaveze-price-input', function() {
-                let value = $(this).val().replace(/[^\d]/g, '');
+                const cursorWasAtEnd = this.selectionEnd === this.value.length;
+                let value = MoavezePlus.toLatinDigits($(this).val()).replace(/[^\d]/g, '');
                 if (value) {
-                    $(this).val(Number(value).toLocaleString('fa-IR'));
+                    // Avoid leading zeros causing weird formatting
+                    value = String(parseInt(value, 10));
+                    $(this).val(Number(value).toLocaleString('en-US'));
                     // Show human-readable hint
                     const hint = $(this).siblings('.field-hint');
                     if (hint.length) {
-                        hint.text(MoavezePlus.priceToText(parseInt(value)));
+                        hint.text(MoavezePlus.priceToText(parseInt(value, 10)));
                     }
+                } else {
+                    $(this).val('');
                 }
+                // Keep the caret at the end - simplest reliable behavior
+                // for a formatted numeric field.
+                if (cursorWasAtEnd) {
+                    const len = this.value.length;
+                    this.setSelectionRange(len, len);
+                }
+            });
+        },
+
+        /**
+         * Convert Persian/Arabic-Indic digits to Latin digits so numeric
+         * regexes (\d) and parseInt/Number() work correctly.
+         */
+        toLatinDigits(str) {
+            if (!str) return str;
+            const persian = '۰۱۲۳۴۵۶۷۸۹';
+            const arabic = '٠١٢٣٤٥٦٧٨٩';
+            return String(str).replace(/[۰-۹٠-٩]/g, (ch) => {
+                let idx = persian.indexOf(ch);
+                if (idx === -1) idx = arabic.indexOf(ch);
+                return idx === -1 ? ch : idx;
             });
         },
 

@@ -40,14 +40,11 @@ class Moaveze_Admin {
             'moaveze-plus'
         );
 
-        // All Exchanges
-        add_submenu_page(
-            'moaveze-plus',
-            'آگهی‌های معاوضه',
-            'آگهی‌ها',
-            'manage_options',
-            'edit.php?post_type=moaveze_exchange'
-        );
+        // NOTE: The "آگهی‌ها" (All Exchanges) submenu is added automatically
+        // by WordPress because the moaveze_exchange CPT is registered with
+        // 'show_in_menu' => 'moaveze-plus' (see class-post-types.php).
+        // Do NOT manually add_submenu_page() for edit.php?post_type=moaveze_exchange
+        // here, or it will show up twice in the sidebar.
 
         // Matches
         add_submenu_page(

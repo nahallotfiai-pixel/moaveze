@@ -940,3 +940,66 @@
         grid-template-columns: repeat(3, 1fr);
     }
 }
+
+
+/* ===== Chip Picker (multi-select made easy) ===== */
+.moaveze-chip-picker {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--moaveze-space-2);
+    padding: var(--moaveze-space-3);
+    border: 1.5px solid var(--moaveze-border);
+    border-radius: var(--moaveze-radius);
+    background: var(--moaveze-input-bg);
+    max-height: 180px;
+    overflow-y: auto;
+}
+
+.moaveze-chip {
+    cursor: pointer;
+    user-select: none;
+}
+
+.moaveze-chip input {
+    display: none;
+}
+
+.moaveze-chip span {
+    display: inline-flex;
+    align-items: center;
+    padding: 7px 14px;
+    border-radius: var(--moaveze-radius-full);
+    border: 1.5px solid var(--moaveze-border);
+    background: var(--moaveze-surface);
+    font-size: var(--moaveze-fs-sm);
+    font-weight: 500;
+    color: var(--moaveze-text-secondary);
+    transition: all 0.25s var(--moaveze-ease-spring);
+    white-space: nowrap;
+}
+
+.moaveze-chip span::before {
+    content: '+';
+    margin-left: 6px;
+    font-weight: 700;
+    color: var(--moaveze-text-faint);
+    transition: all 0.2s;
+}
+
+.moaveze-chip:hover span {
+    border-color: var(--moaveze-primary-200);
+    transform: translateY(-1px);
+}
+
+/* Checked (selected) state */
+.moaveze-chip input:checked + span {
+    background: var(--moaveze-primary);
+    border-color: var(--moaveze-primary);
+    color: #fff;
+    box-shadow: 0 2px 8px rgba(var(--moaveze-primary-rgb), 0.3);
+}
+
+.moaveze-chip input:checked + span::before {
+    content: '✓';
+    color: #fff;
+}

@@ -40,11 +40,14 @@
             // Add alternative condition
             $('#add-condition-btn').on('click', () => this.addAlternativeCondition());
 
-            // Price formatting in real-time
+            // Price formatting in real-time (hint text).
+            // Note: the actual thousand-separator formatting + digit
+            // normalization for ALL .moaveze-price-input fields (including
+            // this one) is handled globally in main.js -> initPriceFormatting().
             $(document).on('input', '#property_value', function() {
-                const raw = $(this).val().replace(/[^\d]/g, '');
+                const raw = MoavezePlus.toLatinDigits($(this).val()).replace(/[^\d]/g, '');
                 if (raw) {
-                    $('#value-hint').text(MoavezePlus.priceToText(parseInt(raw)));
+                    $('#value-hint').text(MoavezePlus.priceToText(parseInt(raw, 10)));
                 }
             });
         },
@@ -434,13 +437,21 @@
                 formData.push({ name: 'uploaded_images[]', value: id });
             });
 
-            // Clean price values
+            // Clean price values (also normalizes any stray Persian digits)
             formData.forEach(item => {
                 if (item.name === 'property_value' || item.name === 'desired_min_value' ||
                     item.name === 'desired_max_value' || item.name === 'cash_difference') {
-                    item.value = item.value.replace(/[^\d]/g, '');
+                    item.value = MoavezePlus.toLatinDigits(item.value).replace(/[^\d]/g, '');
                 }
             });
+
+            // FIX: the AJAX request was missing the required WordPress
+            // admin-ajax 'action' field, which caused every submission to
+            // fail with "خطا در ارتباط با سرور". The nonce itself was
+            // already included via wp_nonce_field() + serializeArray(),
+            // but admin-ajax.php has no way to route the request without
+            // an 'action' parameter matching a registered wp_ajax_* hook.
+            formData.push({ name: 'action', value: 'moaveze_submit_exchange' });
 
             $.ajax({
                 url: moavezePlus.ajaxUrl,
