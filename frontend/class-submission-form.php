@@ -596,7 +596,27 @@ class Moaveze_Submission_Form {
         wp_set_object_terms($post_id, sanitize_text_field($_POST['property_district']), 'moaveze_district');
 
         if (!empty($_POST['features'])) {
-            $features = array_map('sanitize_text_field', $_POST['features']);
+            // FIX: the checkbox <input> values are English slugs
+            // (parking, elevator, storage, balcony, pool, security) so
+            // that JS/CSS can target them consistently. Previously these
+            // raw English slugs were passed straight into
+            // wp_set_object_terms(), which created (or matched) taxonomy
+            // TERMS named literally "parking", "elevator", etc. - so the
+            // single listing page displayed feature tags in English
+            // instead of Persian (visible live on tabrizhome.com).
+            // We now map each slug to its Persian label before saving.
+            $feature_labels = array(
+                'parking'  => 'پارکینگ',
+                'elevator' => 'آسانسور',
+                'storage'  => 'انباری',
+                'balcony'  => 'بالکن',
+                'pool'     => 'استخر',
+                'security' => 'نگهبانی',
+            );
+            $features = array_map(function ($slug) use ($feature_labels) {
+                $slug = sanitize_text_field($slug);
+                return $feature_labels[$slug] ?? $slug;
+            }, $_POST['features']);
             wp_set_object_terms($post_id, $features, 'moaveze_feature');
         }
 

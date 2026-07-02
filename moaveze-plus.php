@@ -236,6 +236,22 @@ final class Moaveze_Plus {
             true
         );
 
+        // Single listing page (redesigned v2): gallery lightbox, share/copy-link
+        wp_enqueue_style(
+            'moaveze-plus-single',
+            MOAVEZE_PLUS_URL . 'assets/css/frontend/single.css',
+            array('moaveze-plus-main'),
+            MOAVEZE_PLUS_VERSION
+        );
+
+        wp_enqueue_script(
+            'moaveze-plus-single',
+            MOAVEZE_PLUS_URL . 'assets/js/frontend/single.js',
+            array('jquery', 'moaveze-plus-main'),
+            MOAVEZE_PLUS_VERSION,
+            true
+        );
+
         // Localize scripts
         wp_localize_script('moaveze-plus-main', 'moavezePlus', array(
             'ajaxUrl' => admin_url('admin-ajax.php'),
