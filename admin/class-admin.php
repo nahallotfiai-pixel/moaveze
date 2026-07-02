@@ -46,6 +46,34 @@ class Moaveze_Admin {
         // Do NOT manually add_submenu_page() for edit.php?post_type=moaveze_exchange
         // here, or it will show up twice in the sidebar.
 
+        // Taxonomy management: districts, property types, features.
+        // FIX: previously there was NO admin menu link to these taxonomy
+        // term-management screens, so admins had no way to add a new
+        // district/feature/property type from the UI at all.
+        add_submenu_page(
+            'moaveze-plus',
+            'مناطق',
+            'مناطق',
+            'manage_options',
+            'edit-tags.php?taxonomy=moaveze_district&post_type=moaveze_exchange'
+        );
+
+        add_submenu_page(
+            'moaveze-plus',
+            'نوع ملک',
+            'نوع ملک',
+            'manage_options',
+            'edit-tags.php?taxonomy=moaveze_property_type&post_type=moaveze_exchange'
+        );
+
+        add_submenu_page(
+            'moaveze-plus',
+            'ویژگی‌ها',
+            'ویژگی‌ها',
+            'manage_options',
+            'edit-tags.php?taxonomy=moaveze_feature&post_type=moaveze_exchange'
+        );
+
         // Matches
         add_submenu_page(
             'moaveze-plus',

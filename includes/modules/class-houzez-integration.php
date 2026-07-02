@@ -19,6 +19,56 @@ class Moaveze_Houzez_Integration {
         add_action('houzez_after_property_title', array($this, 'show_exchange_badge'));
         add_filter('manage_property_posts_columns', array($this, 'add_exchange_column'));
         add_action('manage_property_posts_custom_column', array($this, 'exchange_column_content'), 10, 2);
+
+        // NEW: "Send to Exchange" meta box directly on the single Houzez
+        // property edit screen. Previously the ONLY way to link a property
+        // to the exchange system was the small button in the admin LIST
+        // column - there was no way to do it from inside the property's
+        // own edit screen at all.
+        add_action('add_meta_boxes', array($this, 'add_send_to_exchange_metabox'));
+    }
+
+    /**
+     * Register the "ارسال به معاوضه" meta box on the Houzez property
+     * edit screen.
+     */
+    public function add_send_to_exchange_metabox() {
+        add_meta_box(
+            'moaveze_send_to_exchange',
+            'معاوضه پلاس',
+            array($this, 'render_send_to_exchange_metabox'),
+            'property',
+            'side',
+            'high'
+        );
+    }
+
+    /**
+     * Render the metabox content: either a "already linked" status with a
+     * link to the exchange listing, or a button to create the link.
+     */
+    public function render_send_to_exchange_metabox($post) {
+        $exchange_id = get_post_meta($post->ID, '_moaveze_exchange_linked', true);
+        wp_nonce_field('moaveze_send_to_exchange', 'moaveze_send_to_exchange_nonce');
+        ?>
+        <div class="moaveze-houzez-metabox">
+            <?php if ($exchange_id && get_post($exchange_id)) : ?>
+                <p class="status-linked">
+                    <span class="dashicons dashicons-yes-alt"></span> این ملک به معاوضه متصل است
+                </p>
+                <a href="<?php echo esc_url(get_edit_post_link($exchange_id)); ?>" class="button button-small" target="_blank">
+                    مشاهده آگهی معاوضه
+                </a>
+            <?php else : ?>
+                <p class="status-not-linked">
+                    این ملک هنوز در سیستم معاوضه ثبت نشده است.
+                </p>
+                <button type="button" class="button button-primary button-small moaveze-send-to-exchange-btn" data-property-id="<?php echo esc_attr($post->ID); ?>">
+                    <span class="dashicons dashicons-randomize"></span> ارسال به معاوضه
+                </button>
+            <?php endif; ?>
+        </div>
+        <?php
     }
 
     /**
@@ -135,10 +185,18 @@ class Moaveze_Houzez_Integration {
 
     /**
      * Add exchange badge to Houzez property content
+     *
+     * FIX: this used to check the option 'moaveze_show_in_houzez', but the
+     * Integration settings tab actually saves/registers a DIFFERENT option
+     * key: 'moaveze_houzez_sync'. Toggling "همگام‌سازی با Houzez" in
+     * Settings > یکپارچه‌سازی therefore had NO effect on this badge at all -
+     * it always used whatever the default value of the unrelated option
+     * happened to be. Now both checks use the same 'moaveze_houzez_sync' key
+     * that the settings UI actually saves.
      */
     public function add_exchange_badge_to_content($content) {
         if (!is_singular('property')) return $content;
-        if (get_option('moaveze_show_in_houzez') !== 'yes') return $content;
+        if (get_option('moaveze_houzez_sync') !== 'yes') return $content;
 
         $exchange_id = get_post_meta(get_the_ID(), '_moaveze_exchange_linked', true);
         if (!$exchange_id) return $content;
@@ -153,10 +211,15 @@ class Moaveze_Houzez_Integration {
     }
 
     /**
-     * Show exchange badge on Houzez listing
+     * Show exchange badge on Houzez listing (archive/listing cards).
+     * This one correctly checks the dedicated 'moaveze_exchange_badge'
+     * display-tab option (separate concern from the sync toggle above) -
+     * left as-is, just documenting the distinction so it's not confused
+     * with the sync-option bug fixed above.
      */
     public function show_exchange_badge() {
         if (get_option('moaveze_exchange_badge') !== 'yes') return;
+        if (get_option('moaveze_houzez_sync') !== 'yes') return;
 
         $exchange_id = get_post_meta(get_the_ID(), '_moaveze_exchange_linked', true);
         if (!$exchange_id) return;

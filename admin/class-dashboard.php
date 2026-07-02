@@ -10,6 +10,37 @@ if (!defined('ABSPATH')) {
 class Moaveze_Dashboard {
 
     /**
+     * Get listings pending review (status = pending), newest first.
+     * Used by the new "در انتظار تأیید" dashboard panel.
+     */
+    public static function get_pending_listings($limit = 10) {
+        $posts = get_posts(array(
+            'post_type'      => 'moaveze_exchange',
+            'post_status'    => 'pending',
+            'numberposts'    => $limit,
+            'orderby'        => 'date',
+            'order'          => 'ASC', // oldest pending first
+        ));
+
+        $items = array();
+        foreach ($posts as $post) {
+            $items[] = array(
+                'id'            => $post->ID,
+                'title'         => $post->post_title,
+                'author'        => get_the_author_meta('display_name', $post->post_author),
+                'date'          => $post->post_date,
+                'value'         => get_post_meta($post->ID, '_moaveze_property_value', true),
+                'district'      => wp_get_post_terms($post->ID, 'moaveze_district', array('fields' => 'names')),
+                'type'          => wp_get_post_terms($post->ID, 'moaveze_property_type', array('fields' => 'names')),
+                'thumbnail'     => get_the_post_thumbnail_url($post->ID, 'thumbnail'),
+                'edit_link'     => get_edit_post_link($post->ID, 'raw'),
+                'preview_link'  => get_preview_post_link($post->ID),
+            );
+        }
+        return $items;
+    }
+
+    /**
      * Get dashboard stats
      */
     public static function get_stats() {

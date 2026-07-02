@@ -44,6 +44,10 @@ $matches = $wpdb->get_results("SELECT * FROM $table_matches ORDER BY match_score
                     "SELECT post_id FROM {$wpdb->prefix}moaveze_exchanges WHERE id = %d", $match->exchange_id_b
                 )));
                 ?>
+                <?php
+                    $match_details = json_decode($match->match_details, true) ?: array();
+                    $match_reasons = $match_details['reasons'] ?? array();
+                ?>
                 <div class="moaveze-match-card" data-status="<?php echo esc_attr($match->status); ?>">
                     <div class="match-header">
                         <span class="match-score"><?php echo number_format($match->match_score, 0); ?>%</span>
@@ -67,6 +71,22 @@ $matches = $wpdb->get_results("SELECT * FROM $table_matches ORDER BY match_score
                             <p class="match-value"><?php echo number_format(get_post_meta($exchange_b->ID ?? 0, '_moaveze_property_value', true)); ?> تومان</p>
                         </div>
                     </div>
+
+                    <!-- NEW: quick "why matched" summary directly on the
+                         card so admins/consultants don't have to open the
+                         modal just to see the top reasons. -->
+                    <?php if (!empty($match_reasons)) : ?>
+                        <div class="match-reasons-summary">
+                            <?php foreach (array_slice($match_reasons, 0, 3) as $reason) : ?>
+                                <span class="reason-chip"><span class="dashicons dashicons-yes-alt"></span> <?php echo esc_html($reason); ?></span>
+                            <?php endforeach; ?>
+                        </div>
+                    <?php else : ?>
+                        <div class="match-reasons-summary match-reasons-empty">
+                            <span>برای جزئیات کامل دلیل تطابق، روی «ارتباط طرفین» کلیک کنید</span>
+                        </div>
+                    <?php endif; ?>
+
                     <div class="match-actions">
                         <button class="button assign-consultant-btn" data-match-id="<?php echo esc_attr($match->id); ?>">
                             <span class="dashicons dashicons-businessman"></span> اختصاص مشاور

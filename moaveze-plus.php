@@ -262,8 +262,17 @@ final class Moaveze_Plus {
      * Enqueue admin assets
      */
     public function enqueue_admin_assets($hook) {
-        // Only load on our plugin pages
-        if (strpos($hook, 'moaveze') === false && get_post_type() !== 'moaveze_exchange') {
+        // Load on: our own plugin pages, moaveze_exchange edit/list screens,
+        // AND the Houzez "property" CPT edit/list screens (needed for the
+        // "افزودن به معاوضه" button/metabox integration to work there).
+        $screen = function_exists('get_current_screen') ? get_current_screen() : null;
+        $post_type = $screen ? $screen->post_type : get_post_type();
+
+        $is_moaveze_page   = strpos($hook, 'moaveze') !== false;
+        $is_moaveze_cpt    = $post_type === 'moaveze_exchange';
+        $is_houzez_property = $post_type === 'property';
+
+        if (!$is_moaveze_page && !$is_moaveze_cpt && !$is_houzez_property) {
             return;
         }
 
@@ -322,7 +331,14 @@ final class Moaveze_Plus {
             'moaveze_push_notifications' => 'no',
 
             // Display
+            // NOTE: 'moaveze_houzez_sync' (registered/saved by the
+            // Settings > یکپارچه‌سازی tab) is the option actually read by
+            // Moaveze_Houzez_Integration - see class-houzez-integration.php.
+            // 'moaveze_show_in_houzez' is kept only for backwards
+            // compatibility with any old data and is not read anywhere
+            // anymore.
             'moaveze_show_in_houzez' => 'yes',
+            'moaveze_houzez_sync'    => 'yes',
             'moaveze_exchange_badge' => 'yes',
             'moaveze_dark_mode' => 'auto',
 

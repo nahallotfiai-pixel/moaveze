@@ -66,6 +66,70 @@ $activities = Moaveze_Dashboard::get_recent_activity();
         </div>
     </div>
 
+    <!-- Pending Review Panel (NEW) -->
+    <?php $pending_listings = Moaveze_Dashboard::get_pending_listings(10); ?>
+    <div class="moaveze-section moaveze-pending-panel">
+        <div class="pending-panel-header">
+            <h2>
+                <span class="dashicons dashicons-clock"></span>
+                در انتظار تأیید
+                <?php if (!empty($pending_listings)) : ?>
+                    <span class="pending-count-badge"><?php echo count($pending_listings); ?></span>
+                <?php endif; ?>
+            </h2>
+            <?php if (!empty($pending_listings)) : ?>
+                <a href="<?php echo admin_url('edit.php?post_status=pending&post_type=moaveze_exchange'); ?>" class="button">مشاهده همه</a>
+            <?php endif; ?>
+        </div>
+
+        <?php if (empty($pending_listings)) : ?>
+            <div class="moaveze-empty-inline">
+                <span class="dashicons dashicons-yes-alt"></span>
+                <p>هیچ آگهی در انتظار تأیید نیست. همه چیز به‌روز است!</p>
+            </div>
+        <?php else : ?>
+            <div class="pending-listings-grid" id="pending-listings-grid">
+                <?php foreach ($pending_listings as $item) : ?>
+                    <div class="pending-listing-card" data-post-id="<?php echo esc_attr($item['id']); ?>">
+                        <div class="plc-thumb">
+                            <?php if ($item['thumbnail']) : ?>
+                                <img src="<?php echo esc_url($item['thumbnail']); ?>" alt="">
+                            <?php else : ?>
+                                <span class="dashicons dashicons-camera"></span>
+                            <?php endif; ?>
+                        </div>
+                        <div class="plc-body">
+                            <strong class="plc-title"><?php echo esc_html($item['title']); ?></strong>
+                            <div class="plc-meta">
+                                <span><?php echo esc_html($item['type'][0] ?? '—'); ?></span>
+                                <span><?php echo esc_html($item['district'][0] ?? '—'); ?></span>
+                                <span><?php echo $item['value'] ? number_format($item['value']) . ' تومان' : '—'; ?></span>
+                            </div>
+                            <div class="plc-submeta">
+                                توسط <?php echo esc_html($item['author']); ?> ·
+                                <?php echo esc_html(human_time_diff(strtotime($item['date']))); ?> پیش
+                            </div>
+                        </div>
+                        <div class="plc-actions">
+                            <a href="<?php echo esc_url($item['preview_link']); ?>" target="_blank" class="button button-small" title="پیش‌نمایش">
+                                <span class="dashicons dashicons-visibility"></span>
+                            </a>
+                            <a href="<?php echo esc_url($item['edit_link']); ?>" class="button button-small" title="ویرایش">
+                                <span class="dashicons dashicons-edit"></span>
+                            </a>
+                            <button class="button button-primary button-small approve-listing-btn" data-post-id="<?php echo esc_attr($item['id']); ?>">
+                                <span class="dashicons dashicons-yes"></span> تأیید
+                            </button>
+                            <button class="button button-small reject-listing-btn" data-post-id="<?php echo esc_attr($item['id']); ?>">
+                                <span class="dashicons dashicons-no"></span> رد
+                            </button>
+                        </div>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+        <?php endif; ?>
+    </div>
+
     <!-- Quick Actions -->
     <div class="moaveze-section">
         <h2>دسترسی سریع</h2>

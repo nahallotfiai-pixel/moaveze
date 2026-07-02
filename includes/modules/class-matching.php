@@ -28,6 +28,123 @@ class Moaveze_Matching {
         add_action('wp_ajax_moaveze_detect_chains', array($this, 'detect_chains'));
         add_action('save_post_moaveze_exchange', array($this, 'auto_match_on_save'), 20, 2);
         add_action('wp_ajax_moaveze_get_match_explanation', array($this, 'get_match_explanation'));
+        add_action('wp_ajax_moaveze_get_match_full_details', array($this, 'get_match_full_details'));
+        add_action('wp_ajax_moaveze_update_match_status', array($this, 'update_match_status'));
+    }
+
+    /**
+     * AJAX: Full details for the "connect parties" admin modal.
+     * Returns both sides' contact info (admin/consultant only), the
+     * property specs, and a human-readable breakdown of WHY they matched.
+     * This is what powers the previously-broken "ارتباط طرفین" button.
+     */
+    public function get_match_full_details() {
+        check_ajax_referer('moaveze_admin_nonce', 'nonce');
+
+        if (!current_user_can('manage_options') && !current_user_can('moaveze_view_contacts')) {
+            wp_send_json_error('دسترسی ندارید');
+        }
+
+        $match_id = absint($_POST['match_id'] ?? 0);
+        if (!$match_id) wp_send_json_error('شناسه تطابق نامعتبر');
+
+        global $wpdb;
+        $match = $wpdb->get_row($wpdb->prepare(
+            "SELECT * FROM {$wpdb->prefix}moaveze_matches WHERE id = %d", $match_id
+        ));
+        if (!$match) wp_send_json_error('تطابق یافت نشد');
+
+        $a = $wpdb->get_row($wpdb->prepare(
+            "SELECT * FROM {$wpdb->prefix}moaveze_exchanges WHERE id = %d", $match->exchange_id_a
+        ));
+        $b = $wpdb->get_row($wpdb->prepare(
+            "SELECT * FROM {$wpdb->prefix}moaveze_exchanges WHERE id = %d", $match->exchange_id_b
+        ));
+        if (!$a || !$b) wp_send_json_error('یکی از آگهی‌های این تطابق حذف شده است');
+
+        $details = json_decode($match->match_details, true) ?: array();
+        $consultant = $match->consultant_id ? get_userdata($match->consultant_id) : null;
+
+        wp_send_json_success(array(
+            'match' => array(
+                'id'         => $match->id,
+                'score'      => (float) $match->match_score,
+                'type'       => $match->match_type,
+                'status'     => $match->status,
+                'reasons'    => $details['reasons'] ?? array(),
+                'breakdown'  => $details['breakdown'] ?? array(),
+                'suggestion' => $details['suggestion'] ?? '',
+                'consultant' => $consultant ? $consultant->display_name : null,
+                'notes'      => $match->consultant_notes,
+            ),
+            'side_a' => $this->format_side_for_modal($a),
+            'side_b' => $this->format_side_for_modal($b),
+        ));
+    }
+
+    /**
+     * Format one side (exchange) of a match for the connect-parties modal.
+     */
+    private function format_side_for_modal($ex) {
+        return array(
+            'id'            => $ex->id,
+            'post_id'       => $ex->post_id,
+            'title'         => get_the_title($ex->post_id),
+            'edit_link'     => get_edit_post_link($ex->post_id, 'raw'),
+            'view_link'     => get_permalink($ex->post_id),
+            'property_type' => $ex->property_type,
+            'district'      => $ex->district,
+            'value'         => (int) $ex->property_value,
+            'area'          => (int) $ex->area_sqm,
+            'exchange_type' => $ex->exchange_type,
+            // Contact info is ONLY ever exposed here, behind the
+            // manage_options / moaveze_view_contacts capability check
+            // performed in get_match_full_details() above - never on
+            // any public-facing endpoint.
+            'contact_name'  => $ex->contact_name,
+            'contact_phone' => $ex->contact_phone,
+            'contact_email' => $ex->contact_email,
+        );
+    }
+
+    /**
+     * AJAX: Update a match's status (e.g. mark as "in_progress" or
+     * "completed" after the consultant has connected both parties).
+     */
+    public function update_match_status() {
+        check_ajax_referer('moaveze_admin_nonce', 'nonce');
+
+        if (!current_user_can('manage_options') && !current_user_can('moaveze_view_matches')) {
+            wp_send_json_error('دسترسی ندارید');
+        }
+
+        $match_id = absint($_POST['match_id'] ?? 0);
+        $status = sanitize_text_field($_POST['status'] ?? '');
+        $notes = sanitize_textarea_field($_POST['notes'] ?? '');
+
+        $allowed = array('new', 'assigned', 'in_progress', 'completed', 'rejected');
+        if (!$match_id || !in_array($status, $allowed, true)) {
+            wp_send_json_error('ورودی نامعتبر');
+        }
+
+        global $wpdb;
+        $data = array('status' => $status);
+        $format = array('%s');
+
+        if ($notes !== '') {
+            $data['consultant_notes'] = $notes;
+            $format[] = '%s';
+        }
+
+        $wpdb->update(
+            $wpdb->prefix . 'moaveze_matches',
+            $data,
+            array('id' => $match_id),
+            $format,
+            array('%d')
+        );
+
+        wp_send_json_success(array('message' => 'وضعیت تطابق بروزرسانی شد'));
     }
 
     /**
