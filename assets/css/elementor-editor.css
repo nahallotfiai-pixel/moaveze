@@ -1,0 +1,14 @@
+/**
+ * Moaveze Plus - Elementor Editor Styles
+ */
+
+.elementor-element [class*="moaveze"] .elementor-widget-container {
+    direction: rtl;
+}
+
+/* Category icon in panel */
+.elementor-panel .elementor-panel-category[data-category="moaveze-plus"] .elementor-panel-category-title::before {
+    content: "\e92c";
+    font-family: eicons;
+    margin-left: 8px;
+}

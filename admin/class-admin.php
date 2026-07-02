@@ -110,6 +110,16 @@ class Moaveze_Admin {
             'moaveze-settings',
             array(new Moaveze_Settings(), 'render_settings_page')
         );
+
+        // Analytics
+        add_submenu_page(
+            'moaveze-plus',
+            'آنالیتیکس',
+            'آنالیتیکس',
+            'manage_options',
+            'moaveze-analytics',
+            array($this, 'render_analytics_page')
+        );
     }
 
     /**
@@ -161,6 +171,13 @@ class Moaveze_Admin {
      */
     public function render_monetization_page() {
         include MOAVEZE_PLUS_PATH . 'admin/views/monetization.php';
+    }
+
+    /**
+     * Render Analytics Page
+     */
+    public function render_analytics_page() {
+        include MOAVEZE_PLUS_PATH . 'admin/views/analytics.php';
     }
 
     /**

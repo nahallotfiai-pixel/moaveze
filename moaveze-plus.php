@@ -90,9 +90,22 @@ final class Moaveze_Plus {
         require_once MOAVEZE_PLUS_PATH . 'includes/modules/class-houzez-integration.php';
         require_once MOAVEZE_PLUS_PATH . 'includes/modules/class-wishlist.php';
         require_once MOAVEZE_PLUS_PATH . 'includes/modules/class-auction.php';
+        require_once MOAVEZE_PLUS_PATH . 'includes/modules/class-payment.php';
+        require_once MOAVEZE_PLUS_PATH . 'includes/modules/class-price-estimator.php';
 
         // REST API
         require_once MOAVEZE_PLUS_PATH . 'includes/api/class-rest-api.php';
+
+        // Elementor Integration
+        if (did_action('elementor/loaded')) {
+            require_once MOAVEZE_PLUS_PATH . 'includes/elementor/class-elementor-loader.php';
+            Moaveze_Elementor_Loader::get_instance();
+        } else {
+            add_action('elementor/loaded', function() {
+                require_once MOAVEZE_PLUS_PATH . 'includes/elementor/class-elementor-loader.php';
+                Moaveze_Elementor_Loader::get_instance();
+            });
+        }
     }
 
     /**
