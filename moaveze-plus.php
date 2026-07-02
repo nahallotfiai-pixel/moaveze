@@ -79,12 +79,17 @@ final class Moaveze_Plus {
         require_once MOAVEZE_PLUS_PATH . 'frontend/class-map.php';
         require_once MOAVEZE_PLUS_PATH . 'frontend/class-shortcodes.php';
 
+        // Sample Data
+        require_once MOAVEZE_PLUS_PATH . 'includes/class-sample-data.php';
+
         // Modules
         require_once MOAVEZE_PLUS_PATH . 'includes/modules/class-matching.php';
         require_once MOAVEZE_PLUS_PATH . 'includes/modules/class-offers.php';
         require_once MOAVEZE_PLUS_PATH . 'includes/modules/class-monetization.php';
         require_once MOAVEZE_PLUS_PATH . 'includes/modules/class-notifications.php';
         require_once MOAVEZE_PLUS_PATH . 'includes/modules/class-houzez-integration.php';
+        require_once MOAVEZE_PLUS_PATH . 'includes/modules/class-wishlist.php';
+        require_once MOAVEZE_PLUS_PATH . 'includes/modules/class-auction.php';
 
         // REST API
         require_once MOAVEZE_PLUS_PATH . 'includes/api/class-rest-api.php';
@@ -198,6 +203,22 @@ final class Moaveze_Plus {
             'moaveze-plus-map',
             MOAVEZE_PLUS_URL . 'assets/js/frontend/map.js',
             array('jquery', 'leaflet', 'moaveze-plus-main'),
+            MOAVEZE_PLUS_VERSION,
+            true
+        );
+
+        // Offers styles & JS
+        wp_enqueue_style(
+            'moaveze-plus-offers',
+            MOAVEZE_PLUS_URL . 'assets/css/frontend/offers.css',
+            array('moaveze-plus-main'),
+            MOAVEZE_PLUS_VERSION
+        );
+
+        wp_enqueue_script(
+            'moaveze-plus-offers',
+            MOAVEZE_PLUS_URL . 'assets/js/frontend/offers.js',
+            array('jquery', 'moaveze-plus-main'),
             MOAVEZE_PLUS_VERSION,
             true
         );

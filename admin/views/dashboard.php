@@ -89,6 +89,48 @@ $activities = Moaveze_Dashboard::get_recent_activity();
         </div>
     </div>
 
+    <!-- Sample Data Tools -->
+    <div class="moaveze-section" style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:20px;margin-top:20px;">
+        <h2 style="color:#166534;"><span class="dashicons dashicons-database"></span> داده‌های نمونه (تست)</h2>
+        <p style="color:#15803d;">برای تست عملکرد افزونه، ۶ آگهی نمونه واقعی تبریز + تطابق‌ها و پیشنهادات ایجاد کنید:</p>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px;">
+            <button id="seed-sample-data" class="button button-primary" style="background:#16a34a;border-color:#16a34a;">
+                <span class="dashicons dashicons-database-add"></span> ایجاد داده‌های نمونه
+            </button>
+            <button id="clear-sample-data" class="button" style="color:#dc2626;border-color:#dc2626;">
+                <span class="dashicons dashicons-trash"></span> پاک کردن همه داده‌ها
+            </button>
+        </div>
+        <div id="sample-data-result" style="margin-top:10px;"></div>
+    </div>
+    <script>
+    jQuery(function($) {
+        $('#seed-sample-data').on('click', function() {
+            var $btn = $(this).prop('disabled', true).text('در حال ایجاد...');
+            $.post(ajaxurl, { action: 'moaveze_seed_sample_data', nonce: moavezeAdmin.nonce }, function(r) {
+                if (r.success) {
+                    $('#sample-data-result').html('<p style="color:#16a34a;">✓ ' + r.data.message + '</p>');
+                    setTimeout(function() { location.reload(); }, 1500);
+                } else {
+                    $('#sample-data-result').html('<p style="color:#dc2626;">✗ خطا</p>');
+                }
+                $btn.prop('disabled', false).html('<span class="dashicons dashicons-database-add"></span> ایجاد داده‌های نمونه');
+            });
+        });
+        $('#clear-sample-data').on('click', function() {
+            if (!confirm('آیا مطمئنید؟ همه آگهی‌ها و داده‌ها پاک خواهند شد.')) return;
+            var $btn = $(this).prop('disabled', true).text('در حال پاک‌سازی...');
+            $.post(ajaxurl, { action: 'moaveze_clear_sample_data', nonce: moavezeAdmin.nonce }, function(r) {
+                if (r.success) {
+                    $('#sample-data-result').html('<p style="color:#16a34a;">✓ ' + r.data.message + '</p>');
+                    setTimeout(function() { location.reload(); }, 1500);
+                }
+                $btn.prop('disabled', false).html('<span class="dashicons dashicons-trash"></span> پاک کردن همه داده‌ها');
+            });
+        });
+    });
+    </script>
+
     <!-- Recent Activity -->
     <div class="moaveze-section">
         <h2>فعالیت‌های اخیر</h2>
