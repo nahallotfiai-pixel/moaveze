@@ -411,6 +411,12 @@ $feature_icons = array(
                             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
                             پیشنهاد شما بدون نمایش اطلاعات تماس شما ارسال می‌شود
                         </div>
+                        <button type="button" class="moaveze-btn moaveze-btn-secondary moaveze-btn-full moaveze-favorite-btn moaveze-favorite-btn-inline" data-id="<?php echo esc_attr($post_id); ?>" style="margin-top:10px;">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 10-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/>
+                            </svg>
+                            <span class="fav-btn-label">افزودن به علاقه‌مندی‌ها</span>
+                        </button>
                     </div>
 
                     <!-- Meta info -->

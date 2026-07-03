@@ -43,6 +43,8 @@ class Moaveze_Database {
             cash_direction varchar(10) DEFAULT 'give',
             additional_assets text DEFAULT NULL,
             status varchar(20) NOT NULL DEFAULT 'pending',
+            visibility varchar(20) NOT NULL DEFAULT 'public',
+            reciprocal_of_offer_id bigint(20) unsigned DEFAULT NULL,
             verified tinyint(1) NOT NULL DEFAULT 0,
             verified_by bigint(20) unsigned DEFAULT NULL,
             verified_at datetime DEFAULT NULL,
@@ -63,7 +65,8 @@ class Moaveze_Database {
             KEY property_value (property_value),
             KEY district (district),
             KEY verified (verified),
-            KEY featured (featured)
+            KEY featured (featured),
+            KEY visibility (visibility)
         ) $charset_collate;";
 
         dbDelta($sql_exchanges);
@@ -220,6 +223,29 @@ class Moaveze_Database {
         ) $charset_collate;";
 
         dbDelta($sql_notifications);
+    }
+
+    /**
+     * Run any pending schema upgrades on already-active installs.
+     *
+     * dbDelta() only ADDS new columns/tables defined in create_tables();
+     * it does not run automatically after the initial activation. This
+     * hook is fired on 'plugins_loaded' (see moaveze-plus.php) and checks
+     * the stored 'moaveze_plus_db_version' option, re-running
+     * create_tables() (which is safe/idempotent via dbDelta) whenever the
+     * plugin has been updated with new columns - e.g. the 'visibility'
+     * and 'reciprocal_of_offer_id' columns added for the "register your
+     * own property while sending an offer" feature.
+     */
+    public static function maybe_upgrade() {
+        $installed_version = get_option('moaveze_plus_db_version', '');
+
+        if ($installed_version === MOAVEZE_PLUS_DB_VERSION) {
+            return;
+        }
+
+        self::create_tables();
+        update_option('moaveze_plus_db_version', MOAVEZE_PLUS_DB_VERSION);
     }
 
     /**

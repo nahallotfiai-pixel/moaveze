@@ -51,6 +51,25 @@
                     this.withdrawOffer(offerId);
                 }
             });
+
+            // Toggle the inline "register your property" mini-form
+            $(document).on('change', '#register-property-checkbox', function() {
+                const $fields = $('#register-property-fields');
+                if ($(this).is(':checked')) {
+                    $fields.slideDown(200);
+                    // Require the core fields only when the section is open
+                    $fields.find('[name="reg_title"], [name="reg_phone"], [name="reg_property_type"], [name="reg_district"], [name="reg_value"], [name="reg_area"]').prop('required', true);
+                } else {
+                    $fields.slideUp(200);
+                    $fields.find('[required]').prop('required', false);
+                }
+            });
+
+            // Visual selected-state on the visibility choice cards
+            $(document).on('change', 'input[name="reg_visibility"]', function() {
+                $('.rp-visibility-option').removeClass('selected');
+                $(this).closest('.rp-visibility-option').addClass('selected');
+            });
         },
 
         /**
@@ -131,6 +150,75 @@
                                           style="width:100%;padding:12px 16px;border:1.5px solid #e2e8f0;border-radius:10px;font-family:inherit;resize:vertical;"></textarea>
                             </div>
 
+                            <!-- ===== NEW: Register-your-property-inline ===== -->
+                            <div class="offer-form-section register-property-section">
+                                <label class="register-property-toggle">
+                                    <input type="checkbox" id="register-property-checkbox" name="register_property" value="1">
+                                    <span>
+                                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+                                        ملک خودم را هم برای معاوضه ثبت کنم
+                                    </span>
+                                </label>
+
+                                <div id="register-property-fields" style="display:none;">
+                                    <p class="rp-hint">با ثبت مشخصات ملک خودتان، پیشنهاد شما معتبرتر دیده می‌شود و شانس موفقیت معاوضه بالاتر می‌رود.</p>
+
+                                    <div class="rp-field-grid-2">
+                                        <div class="rp-field">
+                                            <label>عنوان ملک</label>
+                                            <input type="text" name="reg_title" placeholder="مثال: آپارتمان ۱۲۰ متری در رشدیه">
+                                        </div>
+                                        <div class="rp-field">
+                                            <label>شماره تماس</label>
+                                            <input type="tel" name="reg_phone" placeholder="۰۹۱۲۱۲۳۴۵۶۷" dir="ltr">
+                                        </div>
+                                    </div>
+                                    <div class="rp-field-grid-2">
+                                        <div class="rp-field">
+                                            <label>نوع ملک</label>
+                                            <select name="reg_property_type" id="reg-property-type"><option value="">انتخاب کنید</option></select>
+                                        </div>
+                                        <div class="rp-field">
+                                            <label>منطقه</label>
+                                            <select name="reg_district" id="reg-district"><option value="">انتخاب کنید</option></select>
+                                        </div>
+                                    </div>
+                                    <div class="rp-field-grid-2">
+                                        <div class="rp-field">
+                                            <label>ارزش ملک (تومان)</label>
+                                            <input type="text" name="reg_value" class="moaveze-price-input" placeholder="مثال: 14000000000">
+                                        </div>
+                                        <div class="rp-field">
+                                            <label>متراژ (متر مربع)</label>
+                                            <input type="number" name="reg_area" placeholder="مثال: 120">
+                                        </div>
+                                    </div>
+
+                                    <!-- The key question the user asked for -->
+                                    <div class="rp-visibility-choice">
+                                        <label class="rp-visibility-question">این ملک فقط برای همین پیشنهاد ثبت شود یا برای معاوضه‌های مشابه دیگر هم در نظر گرفته شود؟</label>
+                                        <div class="rp-visibility-options">
+                                            <label class="rp-visibility-option">
+                                                <input type="radio" name="reg_visibility" value="private" checked>
+                                                <div class="rvo-card">
+                                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+                                                    <strong>فقط همین پیشنهاد</strong>
+                                                    <small>ملک شما جای دیگری نمایش داده یا پیشنهاد داده نمی‌شود</small>
+                                                </div>
+                                            </label>
+                                            <label class="rp-visibility-option">
+                                                <input type="radio" name="reg_visibility" value="public">
+                                                <div class="rvo-card">
+                                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 010 20 15.3 15.3 0 010-20z"/></svg>
+                                                    <strong>برای موارد مشابه هم ثبت شود</strong>
+                                                    <small>در سیستم تطبیق هوشمند شرکت می‌کند و ممکن است پیشنهادهای دیگری هم دریافت کنید</small>
+                                                </div>
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
                             <div class="moaveze-modal-footer" style="padding:0;border:none;margin-top:20px;">
                                 <button type="button" class="moaveze-btn moaveze-btn-secondary moaveze-modal-close">انصراف</button>
                                 <button type="submit" class="moaveze-btn moaveze-btn-primary" id="submit-offer-btn">
@@ -146,6 +234,26 @@
 
             $('body').append(modalHtml);
             $('body').css('overflow', 'hidden');
+            this.populateRegisterPropertySelects();
+        },
+
+        /**
+         * Fill the "ثبت ملک من" mini-form's property-type/district
+         * <select> options from the data already localized in
+         * moavezePlus.propertyTypes / moavezePlus.districts (see
+         * moaveze-plus.php enqueue_frontend_assets()) - avoids an extra
+         * AJAX round trip just to populate two dropdowns.
+         */
+        populateRegisterPropertySelects() {
+            const $type = $('#reg-property-type');
+            const $district = $('#reg-district');
+
+            (moavezePlus.propertyTypes || []).forEach((t) => {
+                $type.append(`<option value="${t.slug}">${t.name}</option>`);
+            });
+            (moavezePlus.districts || []).forEach((d) => {
+                $district.append(`<option value="${d.slug}">${d.name}</option>`);
+            });
         },
 
         closeModal() {
@@ -162,10 +270,11 @@
             $btn.prop('disabled', true).html('<div class="loading-spinner" style="width:16px;height:16px;border-width:2px;margin:0;display:inline-block;vertical-align:middle;"></div> در حال ارسال...');
 
             const formData = $(form).serializeArray();
-            // Clean price
+            // Clean price fields (also normalizes stray Persian digits,
+            // same fix applied to the main submission form - see form.js)
             formData.forEach(item => {
-                if (item.name === 'cash_offered') {
-                    item.value = item.value.replace(/[^\d]/g, '');
+                if (item.name === 'cash_offered' || item.name === 'reg_value') {
+                    item.value = MoavezePlus.toLatinDigits(item.value).replace(/[^\d]/g, '');
                 }
             });
 

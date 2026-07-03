@@ -24,7 +24,7 @@ define('MOAVEZE_PLUS_FILE', __FILE__);
 define('MOAVEZE_PLUS_PATH', plugin_dir_path(__FILE__));
 define('MOAVEZE_PLUS_URL', plugin_dir_url(__FILE__));
 define('MOAVEZE_PLUS_BASENAME', plugin_basename(__FILE__));
-define('MOAVEZE_PLUS_DB_VERSION', '1.0.0');
+define('MOAVEZE_PLUS_DB_VERSION', '1.1.0'); // bumped: added visibility + reciprocal_of_offer_id columns
 
 /**
  * Main Plugin Class
@@ -93,6 +93,7 @@ final class Moaveze_Plus {
         require_once MOAVEZE_PLUS_PATH . 'includes/modules/class-auction.php';
         require_once MOAVEZE_PLUS_PATH . 'includes/modules/class-payment.php';
         require_once MOAVEZE_PLUS_PATH . 'includes/modules/class-price-estimator.php';
+        require_once MOAVEZE_PLUS_PATH . 'includes/modules/class-favorites.php';
 
         // REST API
         require_once MOAVEZE_PLUS_PATH . 'includes/api/class-rest-api.php';
@@ -117,6 +118,7 @@ final class Moaveze_Plus {
         register_deactivation_hook(MOAVEZE_PLUS_FILE, array($this, 'deactivate'));
 
         add_action('init', array($this, 'init'), 0);
+        add_action('plugins_loaded', array('Moaveze_Database', 'maybe_upgrade'));
         add_action('wp_enqueue_scripts', array($this, 'enqueue_frontend_assets'));
         add_action('admin_enqueue_scripts', array($this, 'enqueue_admin_assets'));
     }
@@ -253,6 +255,22 @@ final class Moaveze_Plus {
             true
         );
 
+        // Favorites/bookmarks (localStorage-based, works for guests too)
+        wp_enqueue_style(
+            'moaveze-plus-favorites',
+            MOAVEZE_PLUS_URL . 'assets/css/frontend/favorites.css',
+            array('moaveze-plus-main'),
+            MOAVEZE_PLUS_VERSION
+        );
+
+        wp_enqueue_script(
+            'moaveze-plus-favorites',
+            MOAVEZE_PLUS_URL . 'assets/js/frontend/favorites.js',
+            array('jquery', 'moaveze-plus-main'),
+            MOAVEZE_PLUS_VERSION,
+            true
+        );
+
         // Localize scripts
         wp_localize_script('moaveze-plus-main', 'moavezePlus', array(
             'ajaxUrl' => admin_url('admin-ajax.php'),
@@ -263,6 +281,16 @@ final class Moaveze_Plus {
                 'lng' => get_option('moaveze_map_center_lng', '46.2738'),
             ),
             'mapZoom' => get_option('moaveze_map_zoom', '12'),
+            // Property types & districts for the inline "register your
+            // property" mini-form inside the offer modal (offers.js), so
+            // it doesn't need an extra AJAX round trip just to populate
+            // two <select> lists.
+            'propertyTypes' => array_map(function ($t) {
+                return array('slug' => $t->slug, 'name' => $t->name);
+            }, get_terms(array('taxonomy' => 'moaveze_property_type', 'hide_empty' => false)) ?: array()),
+            'districts' => array_map(function ($t) {
+                return array('slug' => $t->slug, 'name' => $t->name);
+            }, get_terms(array('taxonomy' => 'moaveze_district', 'hide_empty' => false)) ?: array()),
             'strings' => array(
                 'loading' => 'در حال بارگذاری...',
                 'error' => 'خطایی رخ داد',

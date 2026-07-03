@@ -16,6 +16,7 @@ class Moaveze_Meta_Fields {
     public static function init() {
         add_action('add_meta_boxes', array(__CLASS__, 'add_meta_boxes'));
         add_action('save_post_moaveze_exchange', array(__CLASS__, 'save_meta'));
+        add_action('pre_get_posts', array(__CLASS__, 'hide_private_reciprocal_listings'));
     }
 
     /**
@@ -240,6 +241,30 @@ class Moaveze_Meta_Fields {
         }
 
         return $options;
+    }
+
+    /**
+     * Globally hide "private" reciprocal listings (registered by a user
+     * only for a specific offer, not for general matching/browsing) from
+     * ALL public-facing queries of the moaveze_exchange post type -
+     * archive, [moaveze_listings], [moaveze_featured]/[moaveze_recent],
+     * the map AJAX endpoint, REST API, etc.
+     *
+     * This is done centrally via pre_get_posts instead of editing every
+     * individual WP_Query call, so it can never be accidentally missed
+     * in a new shortcode/template added later.
+     */
+    public static function hide_private_reciprocal_listings($query) {
+        if (is_admin() && !wp_doing_ajax()) return; // don't affect wp-admin listing screens
+        if ($query->get('post_type') !== 'moaveze_exchange') return;
+
+        $meta_query = $query->get('meta_query') ?: array();
+        $meta_query[] = array(
+            'relation' => 'OR',
+            array('key' => '_moaveze_visibility', 'compare' => 'NOT EXISTS'),
+            array('key' => '_moaveze_visibility', 'value' => 'private', 'compare' => '!='),
+        );
+        $query->set('meta_query', $meta_query);
     }
 
     /**

@@ -42,6 +42,23 @@ class Moaveze_Offers {
 
         global $wpdb;
 
+        // ===== NEW: Register-your-own-property-while-offering =====
+        // If the user does not already have a listing to offer
+        // (from_exchange_id empty) but filled out the inline "ثبت ملک من"
+        // mini-form in the offer modal, create that listing now so it can
+        // be attached to this offer as from_exchange_id. The user chooses
+        // whether it should ALSO be visible for other/future matching
+        // (visibility=public) or ONLY exist for this one offer
+        // (visibility=private, hidden from all public listing/browsing
+        // and from the matching algorithm - see class-matching.php and
+        // Moaveze_Meta_Fields::hide_private_reciprocal_listings()).
+        if (!$from_exchange_id && !empty($_POST['register_property']) && $_POST['register_property'] === '1') {
+            $new_exchange_id = $this->create_reciprocal_listing($_POST);
+            if ($new_exchange_id) {
+                $from_exchange_id = $new_exchange_id;
+            }
+        }
+
         // Check exchange exists and is active
         $exchange = $wpdb->get_row($wpdb->prepare(
             "SELECT * FROM {$wpdb->prefix}moaveze_exchanges WHERE id = %d AND status = 'active'",
@@ -119,13 +136,107 @@ class Moaveze_Offers {
             // Trigger notification
             do_action('moaveze_new_offer', $offer_id, $exchange_id);
 
+            $success_message = 'پیشنهاد شما با موفقیت ارسال شد! به‌زودی بررسی خواهد شد.';
+            if (!empty($new_exchange_id)) {
+                $success_message .= ($visibility_choice = ($_POST['reg_visibility'] ?? 'private')) === 'public'
+                    ? ' ملک شما نیز ثبت شد و برای سایر درخواست‌های مشابه هم در نظر گرفته می‌شود.'
+                    : ' ملک شما فقط برای این پیشنهاد ثبت شد.';
+            }
+
             wp_send_json_success(array(
-                'message'  => 'پیشنهاد شما با موفقیت ارسال شد! به‌زودی بررسی خواهد شد.',
-                'offer_id' => $offer_id,
+                'message'          => $success_message,
+                'offer_id'         => $offer_id,
+                'new_exchange_id'  => $new_exchange_id ?? null,
             ));
         } else {
             wp_send_json_error(array('message' => 'خطا در ارسال پیشنهاد. لطفاً مجدداً تلاش کنید.'));
         }
+    }
+
+    /**
+     * Create a new exchange listing "on the fly" from the inline mini
+     * registration form inside the offer modal, so a user who doesn't
+     * have a listing yet can still make a real, attributable counter-
+     * offer with their own property instead of just cash/message.
+     *
+     * @param array $data $_POST data from the offer form.
+     * @return int|false The new exchange row ID, or false on failure.
+     */
+    private function create_reciprocal_listing($data) {
+        $title = sanitize_text_field($data['reg_title'] ?? '');
+        $property_type = sanitize_text_field($data['reg_property_type'] ?? '');
+        $district = sanitize_text_field($data['reg_district'] ?? '');
+        $value = absint(str_replace(array(',', ' ', '٬'), '', $data['reg_value'] ?? ''));
+        $area = absint($data['reg_area'] ?? 0);
+        $phone = sanitize_text_field($data['reg_phone'] ?? '');
+        $visibility = ($data['reg_visibility'] ?? 'private') === 'public' ? 'public' : 'private';
+
+        // Minimum viable data required - otherwise silently skip and
+        // fall back to a plain cash/message offer.
+        if (!$title || !$property_type || !$district || !$value || !$area || !$phone) {
+            return false;
+        }
+
+        $user_id = get_current_user_id();
+        $user = wp_get_current_user();
+
+        // Auto-approve reciprocal listings created this way: the user is
+        // actively engaging (sending an offer), and private ones never
+        // appear publicly anyway, so there's no review backlog risk.
+        $post_id = wp_insert_post(array(
+            'post_title'   => $title,
+            'post_type'    => 'moaveze_exchange',
+            'post_status'  => 'publish',
+            'post_author'  => $user_id ?: 0,
+        ));
+
+        if (is_wp_error($post_id) || !$post_id) return false;
+
+        wp_set_object_terms($post_id, $property_type, 'moaveze_property_type');
+        wp_set_object_terms($post_id, $district, 'moaveze_district');
+
+        $meta = array(
+            'property_value' => $value,
+            'area_sqm'       => $area,
+            'exchange_type'  => 'flexible',
+            'contact_name'   => $user->display_name ?: $title,
+            'contact_phone'  => $phone,
+            'contact_email'  => $user->user_email ?: '',
+            'visibility'     => $visibility,
+        );
+        foreach ($meta as $key => $val) {
+            update_post_meta($post_id, '_moaveze_' . $key, $val);
+        }
+
+        global $wpdb;
+        $wpdb->insert(
+            $wpdb->prefix . 'moaveze_exchanges',
+            array(
+                'post_id'        => $post_id,
+                'user_id'        => $user_id ?: 0,
+                'property_type'  => $property_type,
+                'property_value' => $value,
+                'area_sqm'       => $area,
+                'exchange_type'  => 'flexible',
+                'district'       => $district,
+                'status'         => 'active',
+                'visibility'     => $visibility,
+                'contact_name'   => $user->display_name ?: $title,
+                'contact_phone'  => $phone,
+                'contact_email'  => $user->user_email ?: '',
+            ),
+            array('%d', '%d', '%s', '%d', '%d', '%s', '%s', '%s', '%s', '%s', '%s', '%s')
+        );
+
+        $new_exchange_id = $wpdb->insert_id;
+
+        if ($visibility === 'public') {
+            // Publicly-visible reciprocal listing: let it participate in
+            // the normal matching pool going forward too.
+            do_action('save_post_moaveze_exchange', $post_id, get_post($post_id));
+        }
+
+        return $new_exchange_id;
     }
 
     /**

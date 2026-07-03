@@ -162,7 +162,12 @@ class Moaveze_Matching {
         $matches_table = $wpdb->prefix . 'moaveze_matches';
 
 
-        $exchanges = $wpdb->get_results("SELECT * FROM $table WHERE status = 'active'");
+        // NOTE: visibility = 'private' excludes "reciprocal" listings that
+        // a user chose to register ONLY for a specific offer (see
+        // Moaveze_Offers::create_reciprocal_listing()) - those should
+        // never surface in the general matching pool or chain detection,
+        // only be linked to that one specific offer.
+        $exchanges = $wpdb->get_results("SELECT * FROM $table WHERE status = 'active' AND visibility != 'private'");
         $new_matches = 0;
         $updated_matches = 0;
 
@@ -237,8 +242,13 @@ class Moaveze_Matching {
 
         if (!$current) return;
 
+        // Skip matching entirely for private (offer-only) reciprocal listings.
+        if (isset($current->visibility) && $current->visibility === 'private') {
+            return;
+        }
+
         $others = $wpdb->get_results($wpdb->prepare(
-            "SELECT * FROM $table WHERE status = 'active' AND id != %d", $current->id
+            "SELECT * FROM $table WHERE status = 'active' AND visibility != 'private' AND id != %d", $current->id
         ));
 
         $matches_table = $wpdb->prefix . 'moaveze_matches';
@@ -651,7 +661,7 @@ class Moaveze_Matching {
 
         global $wpdb;
         $table = $wpdb->prefix . 'moaveze_exchanges';
-        $exchanges = $wpdb->get_results("SELECT * FROM $table WHERE status = 'active'");
+        $exchanges = $wpdb->get_results("SELECT * FROM $table WHERE status = 'active' AND visibility != 'private'");
 
         $count = $this->detect_chain_swaps($exchanges, $wpdb->prefix . 'moaveze_matches');
 
