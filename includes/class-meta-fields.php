@@ -35,6 +35,12 @@ class Moaveze_Meta_Fields {
             'elevator'             => array('type' => 'checkbox', 'label' => 'آسانسور'),
             'storage'              => array('type' => 'checkbox', 'label' => 'انباری'),
             'balcony'              => array('type' => 'checkbox', 'label' => 'بالکن'),
+            // NEW: these two existed as checkbox options in the FRONTEND
+            // submission form (see class-submission-form.php) but had no
+            // corresponding editable field in the wp-admin metabox at
+            // all, so admins had no way to toggle them for a listing.
+            'pool'                 => array('type' => 'checkbox', 'label' => 'استخر'),
+            'security'             => array('type' => 'checkbox', 'label' => 'نگهبانی'),
 
             // Location
             'latitude'             => array('type' => 'text', 'label' => 'عرض جغرافیایی'),
@@ -104,6 +110,24 @@ class Moaveze_Meta_Fields {
     }
 
     /**
+     * Maps a feature meta-field key to its Persian taxonomy term name.
+     * This is the single source of truth used both when SAVING (to sync
+     * checkboxes -> moaveze_feature terms) and when RENDERING the admin
+     * checkboxes (to read the correct checked state whether the listing
+     * was created via wp-admin or via the frontend submission form).
+     */
+    private static function get_feature_taxonomy_map() {
+        return array(
+            'parking'  => 'پارکینگ',
+            'elevator' => 'آسانسور',
+            'storage'  => 'انباری',
+            'balcony'  => 'بالکن',
+            'pool'     => 'استخر',
+            'security' => 'نگهبانی',
+        );
+    }
+
+    /**
      * Render property details meta box
      */
     public static function render_property_details_box($post) {
@@ -112,12 +136,29 @@ class Moaveze_Meta_Fields {
         $property_fields = array(
             'property_value', 'area_sqm', 'rooms', 'floor',
             'total_floors', 'year_built', 'parking', 'elevator',
-            'storage', 'balcony', 'latitude', 'longitude', 'address'
+            'storage', 'balcony', 'pool', 'security', 'latitude', 'longitude', 'address'
         );
+
+        // Listings created via the frontend form only ever set the
+        // moaveze_feature TAXONOMY terms, never the individual
+        // _moaveze_parking/_moaveze_elevator/... meta booleans below.
+        // So when rendering the admin checkboxes we must fall back to
+        // "is there a matching taxonomy term?" for any feature whose
+        // boolean meta was never explicitly saved - otherwise the admin
+        // UI would incorrectly show an unchecked box for a feature the
+        // listing actually has.
+        $feature_map = self::get_feature_taxonomy_map();
+        $existing_terms = wp_list_pluck(get_the_terms($post->ID, 'moaveze_feature') ?: array(), 'name');
 
         echo '<div class="moaveze-meta-box">';
         foreach ($property_fields as $key) {
             $value = get_post_meta($post->ID, '_moaveze_' . $key, true);
+
+            if (isset($feature_map[$key]) && $value === '') {
+                // No boolean meta saved yet - infer from taxonomy instead.
+                $value = in_array($feature_map[$key], $existing_terms, true) ? '1' : '0';
+            }
+
             $field = $fields[$key];
             self::render_field($key, $field, $value);
         }
@@ -297,6 +338,25 @@ class Moaveze_Meta_Fields {
 
             update_post_meta($post_id, $meta_key, $value);
         }
+
+        // BUG FIX: the wp-admin "امکانات" checkboxes (پارکینگ/آسانسور/...)
+        // only ever updated their individual boolean meta fields above,
+        // but the single listing page renders features purely from the
+        // moaveze_feature TAXONOMY (see templates/single-exchange.php ->
+        // get_the_terms($post_id, 'moaveze_feature')). The two were never
+        // connected, so toggling a checkbox in wp-admin had literally no
+        // visible effect on the frontend - exactly the bug reported.
+        // Now every save re-syncs the taxonomy from the current checkbox
+        // state, using wp_set_object_terms() in REPLACE mode (4th arg
+        // false) so unchecking a box also removes that term.
+        $feature_map = self::get_feature_taxonomy_map();
+        $active_feature_terms = array();
+        foreach ($feature_map as $key => $term_name) {
+            if (get_post_meta($post_id, '_moaveze_' . $key, true) === '1') {
+                $active_feature_terms[] = $term_name;
+            }
+        }
+        wp_set_object_terms($post_id, $active_feature_terms, 'moaveze_feature', false);
     }
 }
 

@@ -911,3 +911,88 @@
     margin-bottom: var(--moaveze-space-2);
 }
 .moaveze-card-date svg { opacity: 0.7; flex-shrink: 0; }
+
+
+
+/* ========================================
+   SEARCHABLE SELECT (Combobox)
+   ======================================== */
+.moaveze-combobox {
+    position: relative;
+    width: 100%;
+}
+.moaveze-combobox-input {
+    width: 100%;
+    padding: 13px 40px 13px 16px;
+    border: 1.5px solid var(--moaveze-border, #e2e8f0);
+    border-radius: var(--moaveze-radius, 12px);
+    font-family: inherit;
+    font-size: var(--moaveze-fs-base, 14px);
+    background: var(--moaveze-input-bg, #f8fafc);
+    color: var(--moaveze-text, #0f172a);
+    transition: all 0.25s;
+}
+.moaveze-combobox-input:focus {
+    outline: none;
+    border-color: var(--moaveze-primary, #6366f1);
+    box-shadow: 0 0 0 4px rgba(var(--moaveze-primary-rgb, 99,102,241), 0.1);
+}
+.combobox-arrow {
+    position: absolute;
+    top: 50%;
+    left: 14px;
+    transform: translateY(-50%);
+    color: var(--moaveze-text-faint, #94a3b8);
+    pointer-events: none;
+    transition: transform 0.2s;
+}
+.moaveze-combobox.open .combobox-arrow { transform: translateY(-50%) rotate(180deg); }
+
+.moaveze-combobox-list {
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 0;
+    left: 0;
+    max-height: 240px;
+    overflow-y: auto;
+    background: var(--moaveze-surface, #fff);
+    border: 1.5px solid var(--moaveze-border, #e2e8f0);
+    border-radius: var(--moaveze-radius, 12px);
+    box-shadow: var(--moaveze-shadow-lg, 0 12px 28px rgba(0,0,0,0.12));
+    z-index: 50;
+}
+.combobox-item {
+    padding: 10px 16px;
+    font-size: 13px;
+    cursor: pointer;
+    color: var(--moaveze-text-secondary, #334155);
+    transition: background 0.15s;
+}
+.combobox-item:hover { background: var(--moaveze-bg-alt, #f1f5f9); }
+.combobox-item.selected {
+    background: var(--moaveze-primary-50, #eef2ff);
+    color: var(--moaveze-primary, #6366f1);
+    font-weight: 600;
+}
+.combobox-empty {
+    padding: 14px 16px;
+    font-size: 13px;
+    color: var(--moaveze-text-faint, #94a3b8);
+    text-align: center;
+}
+
+/* Chip-picker search box */
+.moaveze-chip-search {
+    width: 100%;
+    padding: 10px 14px;
+    margin-bottom: 8px;
+    border: 1.5px solid var(--moaveze-border, #e2e8f0);
+    border-radius: var(--moaveze-radius-sm, 8px);
+    font-family: inherit;
+    font-size: 13px;
+    background: var(--moaveze-input-bg, #f8fafc);
+}
+.moaveze-chip-search:focus {
+    outline: none;
+    border-color: var(--moaveze-primary, #6366f1);
+}

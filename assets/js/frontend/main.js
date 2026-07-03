@@ -11,6 +11,113 @@
             this.initAnimations();
             this.initCounters();
             this.initDarkMode();
+            this.initSearchableSelects();
+            this.initChipSearch();
+        },
+
+        /**
+         * Turn any <select class="moaveze-searchable-select"> into a
+         * lightweight searchable combobox (type to filter options),
+         * with no external library dependency. Used for the district
+         * dropdowns (now ~60 items after the district-list expansion),
+         * where scrolling a huge native <select> is painful - typing
+         * "رشد" instantly narrows it down to "رشدیه".
+         *
+         * The original <select> is kept in the DOM (just visually
+         * hidden) so normal form submission / validation / required
+         * attributes keep working unchanged - this widget only
+         * controls its .value from the outside.
+         */
+        initSearchableSelects() {
+            $('select.moaveze-searchable-select').each(function () {
+                const $select = $(this);
+                if ($select.data('moaveze-searchable-init')) return; // avoid double-init
+                $select.data('moaveze-searchable-init', true);
+
+                const options = $select.find('option').map(function () {
+                    return { value: $(this).val(), label: $(this).text() };
+                }).get();
+
+                const placeholder = $select.data('placeholder') || 'جستجو یا انتخاب کنید...';
+                const currentLabel = $select.find('option:selected').text() || '';
+
+                const $wrapper = $(`
+                    <div class="moaveze-combobox">
+                        <input type="text" class="moaveze-combobox-input" placeholder="${placeholder}" autocomplete="off" value="${currentLabel !== options[0]?.label ? currentLabel : ''}">
+                        <svg class="combobox-arrow" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                        <div class="moaveze-combobox-list" style="display:none;"></div>
+                    </div>
+                `);
+
+                $select.hide().after($wrapper);
+                const $input = $wrapper.find('.moaveze-combobox-input');
+                const $list = $wrapper.find('.moaveze-combobox-list');
+
+                const renderList = (filter = '') => {
+                    const term = filter.trim().toLowerCase();
+                    const filtered = options.filter((o) => o.value && o.label.toLowerCase().includes(term));
+                    $list.empty();
+                    if (!filtered.length) {
+                        $list.append('<div class="combobox-empty">موردی یافت نشد</div>');
+                        return;
+                    }
+                    filtered.forEach((o) => {
+                        const $item = $(`<div class="combobox-item" data-value="${o.value}">${o.label}</div>`);
+                        if (o.value === $select.val()) $item.addClass('selected');
+                        $list.append($item);
+                    });
+                };
+
+                $input.on('focus click', () => {
+                    renderList($input.val());
+                    $list.show();
+                    $wrapper.addClass('open');
+                });
+
+                $input.on('input', () => renderList($input.val()));
+
+                $list.on('click', '.combobox-item', function () {
+                    const value = $(this).data('value');
+                    const label = $(this).text();
+                    $select.val(value).trigger('change');
+                    $input.val(label);
+                    $list.hide();
+                    $wrapper.removeClass('open');
+                });
+
+                $(document).on('click', (e) => {
+                    if (!$wrapper.is(e.target) && $wrapper.has(e.target).length === 0) {
+                        $list.hide();
+                        $wrapper.removeClass('open');
+                    }
+                });
+            });
+        },
+
+        /**
+         * Adds a search box above any ".moaveze-chip-picker" (used for
+         * the multi-select district chips in the submission form) that
+         * filters the visible chips as the user types - needed now that
+         * the district list has grown to ~60 items.
+         */
+        initChipSearch() {
+            $('.moaveze-chip-picker').each(function () {
+                const $picker = $(this);
+                if ($picker.data('moaveze-chip-search-init')) return;
+                if ($picker.find('.moaveze-chip').length < 8) return; // not worth it for short lists
+                $picker.data('moaveze-chip-search-init', true);
+
+                const $search = $('<input type="text" class="moaveze-chip-search" placeholder="جستجوی منطقه...">');
+                $picker.before($search);
+
+                $search.on('input', function () {
+                    const term = $(this).val().trim().toLowerCase();
+                    $picker.find('.moaveze-chip').each(function () {
+                        const label = $(this).text().toLowerCase();
+                        $(this).toggle(label.includes(term));
+                    });
+                });
+            });
         },
 
         /**

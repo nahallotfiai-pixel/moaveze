@@ -96,13 +96,38 @@ class Moaveze_Taxonomies {
             }
         }
 
-        // Tabriz Districts
+        // Tabriz Districts - expanded to be comprehensive.
+        // Combines: (a) the well-known modern/real-estate-market districts
+        // that were already in the original short list, (b) additional
+        // well-known modern neighborhoods commonly used in Tabriz real
+        // estate listings (Divar, local agencies), and (c) the classic/
+        // historic quarters of Tabriz as documented on Wikipedia
+        // (https://en.wikipedia.org/wiki/Template:Districts_of_Tabriz),
+        // transliterated to their standard Persian spelling. This was
+        // requested to make the district list "more comprehensive" than
+        // the original 20-item list.
         $districts = array(
+            // --- Original + well-known modern districts ---
             'ولیعصر', 'رشدیه', 'باغمیشه', 'الهیه',
             'سعادت‌آباد', 'ائل‌گلی', 'آبرسان', 'منصور',
-            'شهرک سهند', 'ایل‌گلی', 'پاستور', 'ارم',
+            'شهرک سهند', 'پاستور', 'ارم',
             'مارالان', 'قره‌آغاج', 'دروازه تهران', 'شمس تبریزی',
             'شهناز', 'بارنج', 'کوچه‌باغ', 'زعفرانیه',
+            // --- Additional well-known modern neighborhoods ---
+            'ولی‌عصر شمالی', 'ولی‌عصر جنوبی', 'یاغچیان', 'گلستان',
+            'باغ‌شمال', 'خطیب', 'خیام', 'نصف راه',
+            'راه آهن', 'شهرک باهنر', 'شهرک ارم', 'ونک آباد',
+            'میدان ساعت', 'فلکه دانشسرا', 'آبباریک', 'آذربایجان',
+            'ولیعصر مرکزی', 'انصاری', 'دانشسرا', 'حکم‌آباد',
+            'کوی ولیعصر', 'شهرک شهید بهشتی', 'زعفرانیه جدید', 'ائل گلی جدید',
+            // --- Historic / classic quarters of Tabriz ---
+            'باغمشا', 'بازار تبریز', 'سرخاب', 'شتربان',
+            'نوبر', 'لاله', 'ششگلان', 'چرنداب',
+            'داواچی', 'گجیل', 'امامیه', 'حکم‌آور',
+            'خیابان', 'لیلاوا', 'قره‌ملک', 'سیلاب',
+            'شام‌قازان', 'شاه‌گلی', 'تپه‌لی‌باغ', 'ویجویه',
+            'باغ‌شمالی', 'گازران', 'راسته‌کوچه', 'بیلانکوه',
+            'اخماقیه', 'احرار',
         );
 
         foreach ($districts as $district) {
@@ -110,5 +135,20 @@ class Moaveze_Taxonomies {
                 wp_insert_term($district, 'moaveze_district');
             }
         }
+    }
+
+    /**
+     * Add any newly-introduced default districts (or property types) to
+     * an already-active install without requiring plugin reactivation.
+     * Mirrors the pattern used by Moaveze_Database::maybe_upgrade() -
+     * insert_default_terms() is idempotent (term_exists() guard) so this
+     * is always safe to re-run.
+     */
+    public static function maybe_add_new_terms() {
+        $version = get_option('moaveze_taxonomies_version', '');
+        if ($version === MOAVEZE_PLUS_VERSION) return;
+
+        self::insert_default_terms();
+        update_option('moaveze_taxonomies_version', MOAVEZE_PLUS_VERSION);
     }
 }

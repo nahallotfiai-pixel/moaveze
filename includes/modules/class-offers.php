@@ -170,6 +170,11 @@ class Moaveze_Offers {
         $area = absint($data['reg_area'] ?? 0);
         $phone = sanitize_text_field($data['reg_phone'] ?? '');
         $visibility = ($data['reg_visibility'] ?? 'private') === 'public' ? 'public' : 'private';
+        // NEW: gallery images (uploaded via the same moaveze_upload_image
+        // endpoint the main submission form uses) + an optional video URL -
+        // previously this mini-form had no media fields at all.
+        $image_ids = !empty($data['reg_images']) ? array_map('absint', (array) $data['reg_images']) : array();
+        $video_url = !empty($data['reg_video_url']) ? sanitize_url($data['reg_video_url']) : '';
 
         // Minimum viable data required - otherwise silently skip and
         // fall back to a plain cash/message offer.
@@ -204,8 +209,19 @@ class Moaveze_Offers {
             'contact_email'  => $user->user_email ?: '',
             'visibility'     => $visibility,
         );
+        if ($video_url) {
+            $meta['video_url'] = $video_url;
+        }
         foreach ($meta as $key => $val) {
             update_post_meta($post_id, '_moaveze_' . $key, $val);
+        }
+
+        // Gallery: set the first uploaded image as the featured thumbnail
+        // and store the full list for the gallery, exactly like the main
+        // submission form does (see handle_submission() below).
+        if (!empty($image_ids)) {
+            set_post_thumbnail($post_id, $image_ids[0]);
+            update_post_meta($post_id, '_moaveze_gallery', $image_ids);
         }
 
         global $wpdb;

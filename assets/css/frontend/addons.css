@@ -1,0 +1,60 @@
+/**
+ * Moaveze Plus - Add-on Features styles
+ */
+
+/* Compare checkbox on cards */
+.moaveze-compare-checkbox {
+    position: absolute;
+    top: 14px;
+    left: 56px;
+    z-index: 3;
+    background: rgba(255,255,255,0.9);
+    backdrop-filter: blur(4px);
+    border-radius: 20px;
+    padding: 5px 10px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    color: #334155;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+.moaveze-compare-checkbox input { accent-color: #6366f1; }
+
+/* Sticky compare bar */
+.moaveze-compare-bar {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #1e293b;
+    color: #fff;
+    padding: 12px 20px;
+    border-radius: 30px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.25);
+    z-index: 9998;
+    font-size: 13px;
+}
+
+/* Compare table */
+.moaveze-compare-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+.moaveze-compare-table th, .moaveze-compare-table td {
+    padding: 10px 12px;
+    border: 1px solid #e2e8f0;
+    text-align: center;
+}
+.moaveze-compare-table th {
+    background: #f8fafc;
+    font-weight: 700;
+    text-align: right;
+    white-space: nowrap;
+}

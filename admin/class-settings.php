@@ -21,6 +21,8 @@ class Moaveze_Settings {
             'privacy'        => 'حریم خصوصی',
             'chat'           => 'چت داخلی',
             'integration'    => 'یکپارچه‌سازی',
+            'ai'             => 'هوش مصنوعی',
+            'addons'         => 'امکانات تکمیلی',
         );
     }
 
@@ -73,6 +75,15 @@ class Moaveze_Settings {
         // Integration Settings
         register_setting('moaveze_integration', 'moaveze_houzez_sync');
         register_setting('moaveze_integration', 'moaveze_import_existing');
+
+        // Add-on Features (each independently toggleable per user request)
+        register_setting('moaveze_addons', 'moaveze_addon_favorites');
+        register_setting('moaveze_addons', 'moaveze_addon_report_listing');
+        register_setting('moaveze_addons', 'moaveze_addon_compare_listings');
+        register_setting('moaveze_addons', 'moaveze_addon_qr_code');
+        register_setting('moaveze_addons', 'moaveze_addon_price_alerts');
+        register_setting('moaveze_addons', 'moaveze_addon_success_stories');
+        register_setting('moaveze_addons', 'moaveze_addon_weekly_report');
     }
 
 
@@ -135,6 +146,12 @@ class Moaveze_Settings {
                 break;
             case 'integration':
                 $this->render_integration_tab();
+                break;
+            case 'ai':
+                $this->render_ai_tab();
+                break;
+            case 'addons':
+                $this->render_addons_tab();
                 break;
         }
     }
@@ -429,6 +446,218 @@ class Moaveze_Settings {
                 <td>
                     <input type="number" id="moaveze_chat_auto_close_days" name="moaveze_chat_auto_close_days" value="<?php echo esc_attr(get_option('moaveze_chat_auto_close_days', 7)); ?>" min="1" max="30">
                     <p class="description">مکالمات بدون فعالیت بعد از این تعداد روز بسته می‌شوند</p>
+                </td>
+            </tr>
+        </table>
+        <?php
+    }
+
+    /**
+     * AI Valuation Tab
+     *
+     * IMPORTANT: everything configured here powers a STAFF-ONLY feature
+     * (see includes/modules/class-ai-valuation.php) - the "ارزش‌گذاری
+     * هوش مصنوعی" metabox that only site admins and the
+     * 'moaveze_consultant' role can see on the exchange listing edit
+     * screen. There is no public/visitor-facing AI feature.
+     */
+    private function render_ai_tab() {
+        $providers = Moaveze_AI_Valuation::get_providers();
+        $active_provider = get_option('moaveze_ai_active_provider', 'gemini');
+        ?>
+        <div class="moaveze-notice moaveze-notice-warning">
+            <span class="dashicons dashicons-lock"></span>
+            <p>این بخش فقط برای «ارزش‌گذاری ملک توسط مدیر/مشاوران تبریز هوم» استفاده می‌شود و هیچ‌گاه به کاربران عادی سایت نمایش داده نمی‌شود.</p>
+        </div>
+
+        <table class="form-table moaveze-form-table">
+            <tr>
+                <th><label for="moaveze_ai_valuation_enabled">فعال‌سازی ارزش‌گذاری با هوش مصنوعی</label></th>
+                <td>
+                    <label class="moaveze-switch">
+                        <input type="checkbox" id="moaveze_ai_valuation_enabled" name="moaveze_ai_valuation_enabled" value="yes" <?php checked(get_option('moaveze_ai_valuation_enabled'), 'yes'); ?>>
+                        <span class="moaveze-slider"></span>
+                    </label>
+                    <p class="description">در صورت غیرفعال بودن، فقط ارزش‌گذاری دستی توسط مشاوران در دسترس خواهد بود</p>
+                </td>
+            </tr>
+            <tr>
+                <th><label for="moaveze_ai_active_provider">ارائه‌دهنده فعال</label></th>
+                <td>
+                    <select id="moaveze_ai_active_provider" name="moaveze_ai_active_provider">
+                        <?php foreach ($providers as $key => $p) : ?>
+                            <option value="<?php echo esc_attr($key); ?>" <?php selected($active_provider, $key); ?>><?php echo esc_html($p['label']); ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                    <p class="description">فقط یک ارائه‌دهنده در هر لحظه فعال است؛ برای تعویض کافیست ارائه‌دهنده دیگری فعال کنید (بدون نیاز به حذف تنظیمات قبلی)</p>
+                </td>
+            </tr>
+        </table>
+
+        <h3 style="margin-top:24px;">ارائه‌دهندگان هوش مصنوعی</h3>
+        <p class="description">هر ارائه‌دهنده را جداگانه فعال/غیرفعال و پیکربندی کنید.</p>
+
+        <?php foreach ($providers as $key => $p) : ?>
+            <div class="moaveze-ai-provider-card" data-provider="<?php echo esc_attr($key); ?>">
+                <div class="ai-provider-header">
+                    <label class="moaveze-switch">
+                        <input type="checkbox" name="moaveze_ai_<?php echo esc_attr($key); ?>_enabled" value="yes" <?php checked(get_option("moaveze_ai_{$key}_enabled"), 'yes'); ?>>
+                        <span class="moaveze-slider"></span>
+                    </label>
+                    <strong><?php echo esc_html($p['label']); ?></strong>
+                    <button type="button" class="button button-small moaveze-ai-test-btn" data-provider="<?php echo esc_attr($key); ?>">تست اتصال</button>
+                    <span class="ai-test-result"></span>
+                </div>
+                <div class="ai-provider-fields">
+                    <?php if ($key !== 'cloudflare_ai') : ?>
+                        <div class="moaveze-field">
+                            <label>کلید API (API Key)</label>
+                            <input type="password" name="moaveze_ai_<?php echo esc_attr($key); ?>_api_key" value="<?php echo esc_attr(get_option("moaveze_ai_{$key}_api_key")); ?>" class="regular-text" dir="ltr" autocomplete="off">
+                        </div>
+                    <?php else : ?>
+                        <div class="moaveze-field">
+                            <label>کلید API (API Token)</label>
+                            <input type="password" name="moaveze_ai_<?php echo esc_attr($key); ?>_api_key" value="<?php echo esc_attr(get_option("moaveze_ai_{$key}_api_key")); ?>" class="regular-text" dir="ltr" autocomplete="off">
+                        </div>
+                        <div class="moaveze-field">
+                            <label>Account ID</label>
+                            <input type="text" name="moaveze_ai_cloudflare_ai_account_id" value="<?php echo esc_attr(get_option('moaveze_ai_cloudflare_ai_account_id')); ?>" class="regular-text" dir="ltr">
+                        </div>
+                    <?php endif; ?>
+                    <div class="moaveze-field">
+                        <label>آدرس API <?php echo $key === 'custom' ? '(الزامی)' : '(اختیاری - در صورت خالی بودن از مقدار پیش‌فرض استفاده می‌شود)'; ?></label>
+                        <input type="text" name="moaveze_ai_<?php echo esc_attr($key); ?>_url" value="<?php echo esc_attr(get_option("moaveze_ai_{$key}_url")); ?>" class="regular-text" dir="ltr" placeholder="<?php echo esc_attr($p['default_url']); ?>">
+                    </div>
+                    <div class="moaveze-field">
+                        <label>مدل</label>
+                        <input type="text" name="moaveze_ai_<?php echo esc_attr($key); ?>_model" value="<?php echo esc_attr(get_option("moaveze_ai_{$key}_model")); ?>" class="regular-text" dir="ltr" placeholder="<?php echo esc_attr($p['default_model']); ?>">
+                    </div>
+                </div>
+            </div>
+        <?php endforeach; ?>
+
+        <h3 style="margin-top:30px;">دور زدن محدودیت دسترسی (میزبانی ایران)</h3>
+        <p class="description">چون اکثر سایت‌ها در ایران میزبانی می‌شوند و ممکن است دسترسی مستقیم به این سرویس‌ها محدود باشد، یکی (یا هر دو) روش زیر را می‌توانید فعال کنید.</p>
+
+        <div class="moaveze-ai-bypass-grid">
+            <div class="moaveze-ai-provider-card">
+                <div class="ai-provider-header">
+                    <label class="moaveze-switch">
+                        <input type="checkbox" name="moaveze_ai_proxy_enabled" value="yes" <?php checked(get_option('moaveze_ai_proxy_enabled'), 'yes'); ?>>
+                        <span class="moaveze-slider"></span>
+                    </label>
+                    <strong>پروکسی HTTP / Xray</strong>
+                </div>
+                <div class="ai-provider-fields">
+                    <div class="moaveze-field">
+                        <label>آدرس پروکسی (کانفیگ Xray/HTTP/SOCKS)</label>
+                        <input type="text" name="moaveze_ai_proxy_url" value="<?php echo esc_attr(get_option('moaveze_ai_proxy_url')); ?>" class="regular-text" dir="ltr" placeholder="http://127.0.0.1:2080 یا socks5://127.0.0.1:1080">
+                        <p class="description">فقط محل واردکردن آدرس پروکسی است؛ این افزونه خودش سرویس Xray را اجرا نمی‌کند - باید از قبل روی سرور در حال اجرا باشد.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="moaveze-ai-provider-card">
+                <div class="ai-provider-header">
+                    <label class="moaveze-switch">
+                        <input type="checkbox" name="moaveze_ai_worker_enabled" value="yes" <?php checked(get_option('moaveze_ai_worker_enabled'), 'yes'); ?>>
+                        <span class="moaveze-slider"></span>
+                    </label>
+                    <strong>رله از طریق Cloudflare Worker</strong>
+                </div>
+                <div class="ai-provider-fields">
+                    <div class="moaveze-field">
+                        <label>آدرس Cloudflare Worker</label>
+                        <input type="text" name="moaveze_ai_worker_url" value="<?php echo esc_attr(get_option('moaveze_ai_worker_url')); ?>" class="regular-text" dir="ltr" placeholder="https://your-worker.your-subdomain.workers.dev">
+                    </div>
+                    <div class="moaveze-field">
+                        <label>رمز مشترک (اختیاری، برای امنیت بیشتر)</label>
+                        <input type="password" name="moaveze_ai_worker_secret" value="<?php echo esc_attr(get_option('moaveze_ai_worker_secret')); ?>" class="regular-text" dir="ltr" autocomplete="off">
+                    </div>
+                    <p class="description">در صورت فعال بودن این گزینه، تمام درخواست‌های هوش مصنوعی از طریق Worker شما ارسال می‌شود و تنظیمات پروکسی HTTP نادیده گرفته می‌شود.</p>
+                </div>
+            </div>
+        </div>
+        <?php
+    }
+
+    /**
+     * Add-on Features Tab - master on/off switches for every optional
+     * feature suggested, so the site owner can enable only what they
+     * want (per explicit request: "بقیه امکانات هم از طریق تنظیمات بشه
+     * فعال یا غیر فعال کرد").
+     */
+    private function render_addons_tab() {
+        ?>
+        <table class="form-table moaveze-form-table">
+            <tr>
+                <th><label for="moaveze_addon_favorites">علاقه‌مندی‌ها (Favorites)</label></th>
+                <td>
+                    <label class="moaveze-switch">
+                        <input type="checkbox" id="moaveze_addon_favorites" name="moaveze_addon_favorites" value="yes" <?php checked(get_option('moaveze_addon_favorites', 'yes'), 'yes'); ?>>
+                        <span class="moaveze-slider"></span>
+                    </label>
+                    <p class="description">امکان ذخیره آگهی‌های مورد علاقه (بدون نیاز به ثبت‌نام)</p>
+                </td>
+            </tr>
+            <tr>
+                <th><label for="moaveze_addon_report_listing">گزارش تخلف آگهی</label></th>
+                <td>
+                    <label class="moaveze-switch">
+                        <input type="checkbox" id="moaveze_addon_report_listing" name="moaveze_addon_report_listing" value="yes" <?php checked(get_option('moaveze_addon_report_listing'), 'yes'); ?>>
+                        <span class="moaveze-slider"></span>
+                    </label>
+                    <p class="description">دکمه «گزارش این آگهی» روی صفحه هر آگهی برای گزارش تخلف یا محتوای مشکوک</p>
+                </td>
+            </tr>
+            <tr>
+                <th><label for="moaveze_addon_compare_listings">مقایسه آگهی‌ها</label></th>
+                <td>
+                    <label class="moaveze-switch">
+                        <input type="checkbox" id="moaveze_addon_compare_listings" name="moaveze_addon_compare_listings" value="yes" <?php checked(get_option('moaveze_addon_compare_listings'), 'yes'); ?>>
+                        <span class="moaveze-slider"></span>
+                    </label>
+                    <p class="description">امکان انتخاب ۲ تا ۳ آگهی و مشاهده جدول مقایسه‌ای مشخصات</p>
+                </td>
+            </tr>
+            <tr>
+                <th><label for="moaveze_addon_qr_code">QR Code برای آگهی</label></th>
+                <td>
+                    <label class="moaveze-switch">
+                        <input type="checkbox" id="moaveze_addon_qr_code" name="moaveze_addon_qr_code" value="yes" <?php checked(get_option('moaveze_addon_qr_code'), 'yes'); ?>>
+                        <span class="moaveze-slider"></span>
+                    </label>
+                    <p class="description">دکمه دانلود QR Code آگهی برای چاپ و نصب روی تابلوی ملک</p>
+                </td>
+            </tr>
+            <tr>
+                <th><label for="moaveze_addon_price_alerts">هشدار قیمت در لیست آرزو</label></th>
+                <td>
+                    <label class="moaveze-switch">
+                        <input type="checkbox" id="moaveze_addon_price_alerts" name="moaveze_addon_price_alerts" value="yes" <?php checked(get_option('moaveze_addon_price_alerts')); ?>>
+                        <span class="moaveze-slider"></span>
+                    </label>
+                    <p class="description">اطلاع‌رسانی (ایمیل/پیامک) وقتی ملکی زیر قیمت مشخص‌شده در لیست آرزو ثبت شود</p>
+                </td>
+            </tr>
+            <tr>
+                <th><label for="moaveze_addon_success_stories">معاوضه‌های موفق (Success Stories)</label></th>
+                <td>
+                    <label class="moaveze-switch">
+                        <input type="checkbox" id="moaveze_addon_success_stories" name="moaveze_addon_success_stories" value="yes" <?php checked(get_option('moaveze_addon_success_stories')); ?>>
+                        <span class="moaveze-slider"></span>
+                    </label>
+                    <p class="description">نمایش صفحه عمومی معاوضه‌های موفق انجام‌شده (بدون افشای هویت طرفین)</p>
+                </td>
+            </tr>
+            <tr>
+                <th><label for="moaveze_addon_weekly_report">گزارش هفتگی ایمیلی به مالکین</label></th>
+                <td>
+                    <label class="moaveze-switch">
+                        <input type="checkbox" id="moaveze_addon_weekly_report" name="moaveze_addon_weekly_report" value="yes" <?php checked(get_option('moaveze_addon_weekly_report')); ?>>
+                        <span class="moaveze-slider"></span>
+                    </label>
+                    <p class="description">ارسال خلاصه بازدید و پیشنهادات هفتگی به صاحبان آگهی از طریق ایمیل</p>
                 </td>
             </tr>
         </table>

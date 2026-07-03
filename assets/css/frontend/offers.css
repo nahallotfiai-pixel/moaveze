@@ -442,3 +442,18 @@
 @media (max-width: 480px) {
     .rp-field-grid-2, .rp-visibility-options { grid-template-columns: 1fr; }
 }
+
+
+/* ===== Reciprocal-listing mini-form: media fields ===== */
+.rp-field-full { grid-column: 1 / -1; }
+.rp-upload-area { padding: 16px; min-height: 90px; }
+.rp-upload-area .upload-placeholder { gap: 4px; }
+.rp-upload-area .upload-placeholder span { font-size: 12px; font-weight: 600; }
+.rp-upload-area .upload-placeholder small { font-size: 10.5px; }
+.rp-image-preview {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(70px, 1fr));
+    gap: 8px;
+    margin-top: 10px;
+}
+.rp-image-preview .image-item { aspect-ratio: 1; }

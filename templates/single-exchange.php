@@ -275,6 +275,23 @@ $feature_icons = array(
                     </div>
                 <?php endif; ?>
 
+                <!-- Video (optional) -->
+                <?php $video_url = get_post_meta($post_id, '_moaveze_video_url', true); ?>
+                <?php if ($video_url) : ?>
+                    <div class="moaveze-section-card">
+                        <h3 class="section-title">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+                            ویدیوی معرفی ملک
+                        </h3>
+                        <div class="single-video-embed">
+                            <a href="<?php echo esc_url($video_url); ?>" target="_blank" rel="noopener" class="video-link-card">
+                                <svg width="40" height="40" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                                <span>مشاهده ویدیوی ملک</span>
+                            </a>
+                        </div>
+                    </div>
+                <?php endif; ?>
+
                 <!-- Map -->
                 <?php if ($lat && $lng) : ?>
                     <div class="moaveze-section-card">
@@ -411,12 +428,28 @@ $feature_icons = array(
                             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
                             پیشنهاد شما بدون نمایش اطلاعات تماس شما ارسال می‌شود
                         </div>
-                        <button type="button" class="moaveze-btn moaveze-btn-secondary moaveze-btn-full moaveze-favorite-btn moaveze-favorite-btn-inline" data-id="<?php echo esc_attr($post_id); ?>" style="margin-top:10px;">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 10-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/>
-                            </svg>
-                            <span class="fav-btn-label">افزودن به علاقه‌مندی‌ها</span>
-                        </button>
+                        <?php if (get_option('moaveze_addon_favorites', 'yes') === 'yes') : ?>
+                            <button type="button" class="moaveze-btn moaveze-btn-secondary moaveze-btn-full moaveze-favorite-btn moaveze-favorite-btn-inline" data-id="<?php echo esc_attr($post_id); ?>" style="margin-top:10px;">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 10-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/>
+                                </svg>
+                                <span class="fav-btn-label">افزودن به علاقه‌مندی‌ها</span>
+                            </button>
+                        <?php endif; ?>
+
+                        <?php if (get_option('moaveze_addon_report_listing') === 'yes') : ?>
+                            <button type="button" class="moaveze-btn moaveze-btn-ghost moaveze-btn-full moaveze-report-btn" data-id="<?php echo esc_attr($post_id); ?>" style="margin-top:8px;color:#ef4444;">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
+                                گزارش این آگهی
+                            </button>
+                        <?php endif; ?>
+
+                        <?php if (get_option('moaveze_addon_qr_code') === 'yes') : ?>
+                            <button type="button" class="moaveze-btn moaveze-btn-ghost moaveze-btn-full moaveze-qr-btn" data-url="<?php echo esc_url(get_permalink()); ?>" data-title="<?php echo esc_attr(get_the_title()); ?>" style="margin-top:8px;">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+                                دریافت QR Code آگهی
+                            </button>
+                        <?php endif; ?>
                     </div>
 
                     <!-- Meta info -->

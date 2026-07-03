@@ -7,6 +7,7 @@
 
     const MoavezeOffers = {
         currentFilter: 'all',
+        rpUploadedImages: [], // images uploaded via the reciprocal-listing mini-form
 
         init() {
             this.bindEvents();
@@ -70,6 +71,100 @@
                 $('.rp-visibility-option').removeClass('selected');
                 $(this).closest('.rp-visibility-option').addClass('selected');
             });
+
+            // ===== Reciprocal-listing image upload (drag & drop + click) =====
+            $(document).on('dragover dragenter', '#rp-upload-area', function(e) {
+                e.preventDefault();
+                $(this).addClass('dragover');
+            });
+            $(document).on('dragleave drop', '#rp-upload-area', function(e) {
+                e.preventDefault();
+                $(this).removeClass('dragover');
+            });
+            $(document).on('drop', '#rp-upload-area', (e) => {
+                this.handleRpFiles(e.originalEvent.dataTransfer.files);
+            });
+            $(document).on('change', '#rp-property-images', (e) => {
+                this.handleRpFiles(e.target.files);
+            });
+            // Remove an uploaded reciprocal-listing image
+            $(document).on('click', '#rp-image-preview .remove-image', function() {
+                const id = $(this).data('id');
+                MoavezeOffers.rpUploadedImages = MoavezeOffers.rpUploadedImages.filter((i) => i !== id);
+                $(this).closest('.image-item').remove();
+            });
+        },
+
+        /**
+         * Validate + upload each selected/dropped file for the reciprocal
+         * listing mini-form, reusing the exact same
+         * 'moaveze_upload_image' AJAX endpoint the main submission form
+         * (form.js) already uses - same size/type limits, same response
+         * shape ({id, url, thumb}).
+         */
+        handleRpFiles(files) {
+            Array.from(files).forEach((file) => {
+                if (!file.type.match('image.*')) {
+                    MoavezePlus.showToast('فقط فایل‌های تصویری مجاز هستند', 'error');
+                    return;
+                }
+                if (file.size > 5 * 1024 * 1024) {
+                    MoavezePlus.showToast('حجم فایل نباید بیشتر از ۵ مگابایت باشد', 'error');
+                    return;
+                }
+                this.uploadRpImage(file);
+            });
+        },
+
+        uploadRpImage(file) {
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('action', 'moaveze_upload_image');
+            formData.append('nonce', moavezePlus.nonce);
+
+            const tempId = 'rp-temp-' + Date.now() + '-' + Math.random().toString(36).slice(2);
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                $('#rp-image-preview').append(`
+                    <div class="image-item" id="${tempId}">
+                        <img src="${e.target.result}" alt="">
+                        <div class="upload-progress"><div class="progress-bar"></div></div>
+                    </div>
+                `);
+            };
+            reader.readAsDataURL(file);
+
+            $.ajax({
+                url: moavezePlus.ajaxUrl,
+                type: 'POST',
+                data: formData,
+                processData: false,
+                contentType: false,
+                xhr: () => {
+                    const xhr = new window.XMLHttpRequest();
+                    xhr.upload.addEventListener('progress', (e) => {
+                        if (e.lengthComputable) {
+                            $(`#${tempId} .progress-bar`).css('width', (e.loaded / e.total * 100) + '%');
+                        }
+                    });
+                    return xhr;
+                },
+                success: (response) => {
+                    const $item = $(`#${tempId}`);
+                    if (response.success) {
+                        $item.find('.upload-progress').remove();
+                        $item.append(`<button type="button" class="remove-image" data-id="${response.data.id}">&times;</button>`);
+                        this.rpUploadedImages.push(response.data.id);
+                    } else {
+                        $item.remove();
+                        MoavezePlus.showToast(response.data.message || 'خطا در آپلود', 'error');
+                    }
+                },
+                error: () => {
+                    $(`#${tempId}`).remove();
+                    MoavezePlus.showToast('خطا در آپلود تصویر', 'error');
+                }
+            });
         },
 
         /**
@@ -78,6 +173,7 @@
         openOfferModal(exchangeId) {
             // Remove existing modal
             $('.moaveze-modal-overlay').remove();
+            this.rpUploadedImages = [];
 
             const modalHtml = `
                 <div class="moaveze-modal-overlay active">
@@ -180,7 +276,7 @@
                                         </div>
                                         <div class="rp-field">
                                             <label>منطقه</label>
-                                            <select name="reg_district" id="reg-district"><option value="">انتخاب کنید</option></select>
+                                            <select name="reg_district" id="reg-district" class="moaveze-searchable-select" data-placeholder="جستجوی منطقه..."><option value="">انتخاب کنید</option></select>
                                         </div>
                                     </div>
                                     <div class="rp-field-grid-2">
@@ -192,6 +288,30 @@
                                             <label>متراژ (متر مربع)</label>
                                             <input type="number" name="reg_area" placeholder="مثال: 120">
                                         </div>
+                                    </div>
+
+                                    <!-- ===== NEW: Media upload (previously missing entirely) ===== -->
+                                    <div class="rp-field rp-field-full">
+                                        <label>تصاویر ملک (اختیاری)</label>
+                                        <div class="moaveze-upload-area rp-upload-area" id="rp-upload-area">
+                                            <div class="upload-placeholder">
+                                                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                                                    <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                                                    <polyline points="21 15 16 10 5 21"></polyline>
+                                                </svg>
+                                                <span>تصاویر را بکشید یا کلیک کنید</span>
+                                                <small>حداکثر ۵ مگابایت هر فایل</small>
+                                            </div>
+                                            <input type="file" id="rp-property-images" multiple accept="image/jpeg,image/png,image/webp" class="upload-input">
+                                        </div>
+                                        <div class="moaveze-image-preview rp-image-preview" id="rp-image-preview"></div>
+                                    </div>
+
+                                    <div class="rp-field rp-field-full">
+                                        <label>لینک ویدیوی ملک (اختیاری)</label>
+                                        <input type="url" name="reg_video_url" placeholder="لینک آپارات، یوتیوب یا هر ویدیوی دیگر" dir="ltr">
+                                        <small class="rp-hint" style="margin:6px 0 0;">می‌توانید لینک ویدیوی معرفی ملک خود را از آپارات، یوتیوب یا هر سرویس دیگر وارد کنید.</small>
                                     </div>
 
                                     <!-- The key question the user asked for -->
@@ -254,6 +374,14 @@
             (moavezePlus.districts || []).forEach((d) => {
                 $district.append(`<option value="${d.slug}">${d.name}</option>`);
             });
+
+            // The district <select> is created dynamically (modal markup
+            // is injected via JS), so it doesn't exist yet when
+            // MoavezePlus.init() ran on page load - initialize the
+            // searchable combobox for it now that its options exist.
+            if (window.MoavezePlus && MoavezePlus.initSearchableSelects) {
+                MoavezePlus.initSearchableSelects();
+            }
         },
 
         closeModal() {
@@ -276,6 +404,13 @@
                 if (item.name === 'cash_offered' || item.name === 'reg_value') {
                     item.value = MoavezePlus.toLatinDigits(item.value).replace(/[^\d]/g, '');
                 }
+            });
+
+            // Attach any images uploaded via the reciprocal-listing
+            // mini-form (gallery), so create_reciprocal_listing() on the
+            // server can build the new listing's gallery + thumbnail.
+            this.rpUploadedImages.forEach((id) => {
+                formData.push({ name: 'reg_images[]', value: id });
             });
 
             formData.push({ name: 'action', value: 'moaveze_send_offer' });

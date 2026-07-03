@@ -223,6 +223,36 @@ class Moaveze_Database {
         ) $charset_collate;";
 
         dbDelta($sql_notifications);
+
+        // Valuations table (manual + AI-assisted property valuations,
+        // restricted to admin/consultant use only - see
+        // class-ai-valuation.php)
+        $table_valuations = $wpdb->prefix . 'moaveze_valuations';
+        $sql_valuations = "CREATE TABLE $table_valuations (
+            id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+            exchange_id bigint(20) unsigned NOT NULL,
+            post_id bigint(20) unsigned NOT NULL,
+            type varchar(20) NOT NULL DEFAULT 'manual',
+            ai_provider varchar(30) DEFAULT NULL,
+            suggested_value bigint(20) DEFAULT NULL,
+            suggested_min bigint(20) DEFAULT NULL,
+            suggested_max bigint(20) DEFAULT NULL,
+            confidence varchar(20) DEFAULT NULL,
+            reasoning longtext DEFAULT NULL,
+            comparables longtext DEFAULT NULL,
+            raw_response longtext DEFAULT NULL,
+            manual_value bigint(20) DEFAULT NULL,
+            manual_notes text DEFAULT NULL,
+            status varchar(20) NOT NULL DEFAULT 'pending',
+            created_by bigint(20) unsigned DEFAULT NULL,
+            created_at datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            KEY exchange_id (exchange_id),
+            KEY post_id (post_id),
+            KEY status (status)
+        ) $charset_collate;";
+
+        dbDelta($sql_valuations);
     }
 
     /**
@@ -263,6 +293,7 @@ class Moaveze_Database {
             'moaveze_subscriptions',
             'moaveze_wishlist',
             'moaveze_notifications',
+            'moaveze_valuations',
         );
 
         foreach ($tables as $table) {

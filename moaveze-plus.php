@@ -24,7 +24,7 @@ define('MOAVEZE_PLUS_FILE', __FILE__);
 define('MOAVEZE_PLUS_PATH', plugin_dir_path(__FILE__));
 define('MOAVEZE_PLUS_URL', plugin_dir_url(__FILE__));
 define('MOAVEZE_PLUS_BASENAME', plugin_basename(__FILE__));
-define('MOAVEZE_PLUS_DB_VERSION', '1.1.0'); // bumped: added visibility + reciprocal_of_offer_id columns
+define('MOAVEZE_PLUS_DB_VERSION', '1.2.0'); // bumped: added moaveze_valuations table (AI + manual valuation)
 
 /**
  * Main Plugin Class
@@ -94,6 +94,8 @@ final class Moaveze_Plus {
         require_once MOAVEZE_PLUS_PATH . 'includes/modules/class-payment.php';
         require_once MOAVEZE_PLUS_PATH . 'includes/modules/class-price-estimator.php';
         require_once MOAVEZE_PLUS_PATH . 'includes/modules/class-favorites.php';
+        require_once MOAVEZE_PLUS_PATH . 'includes/modules/class-ai-valuation.php';
+        require_once MOAVEZE_PLUS_PATH . 'includes/modules/class-addons.php';
 
         // REST API
         require_once MOAVEZE_PLUS_PATH . 'includes/api/class-rest-api.php';
@@ -119,6 +121,7 @@ final class Moaveze_Plus {
 
         add_action('init', array($this, 'init'), 0);
         add_action('plugins_loaded', array('Moaveze_Database', 'maybe_upgrade'));
+        add_action('init', array('Moaveze_Taxonomies', 'maybe_add_new_terms'), 20);
         add_action('wp_enqueue_scripts', array($this, 'enqueue_frontend_assets'));
         add_action('admin_enqueue_scripts', array($this, 'enqueue_admin_assets'));
     }
@@ -256,20 +259,50 @@ final class Moaveze_Plus {
         );
 
         // Favorites/bookmarks (localStorage-based, works for guests too)
-        wp_enqueue_style(
-            'moaveze-plus-favorites',
-            MOAVEZE_PLUS_URL . 'assets/css/frontend/favorites.css',
-            array('moaveze-plus-main'),
-            MOAVEZE_PLUS_VERSION
-        );
+        // Gated behind its own settings toggle (Settings > امکانات
+        // تکمیلی), default 'yes' since it already existed before the
+        // add-on toggle system was introduced.
+        if (get_option('moaveze_addon_favorites', 'yes') === 'yes') {
+            wp_enqueue_style(
+                'moaveze-plus-favorites',
+                MOAVEZE_PLUS_URL . 'assets/css/frontend/favorites.css',
+                array('moaveze-plus-main'),
+                MOAVEZE_PLUS_VERSION
+            );
 
-        wp_enqueue_script(
-            'moaveze-plus-favorites',
-            MOAVEZE_PLUS_URL . 'assets/js/frontend/favorites.js',
-            array('jquery', 'moaveze-plus-main'),
-            MOAVEZE_PLUS_VERSION,
-            true
-        );
+            wp_enqueue_script(
+                'moaveze-plus-favorites',
+                MOAVEZE_PLUS_URL . 'assets/js/frontend/favorites.js',
+                array('jquery', 'moaveze-plus-main'),
+                MOAVEZE_PLUS_VERSION,
+                true
+            );
+        }
+
+        // Add-on features: report listing, compare listings, QR code -
+        // each independently toggled from Settings > امکانات تکمیلی.
+        if (get_option('moaveze_addon_report_listing') === 'yes'
+            || get_option('moaveze_addon_compare_listings') === 'yes'
+            || get_option('moaveze_addon_qr_code') === 'yes') {
+            wp_enqueue_style(
+                'moaveze-plus-addons',
+                MOAVEZE_PLUS_URL . 'assets/css/frontend/addons.css',
+                array('moaveze-plus-main'),
+                MOAVEZE_PLUS_VERSION
+            );
+            wp_enqueue_script(
+                'moaveze-plus-addons',
+                MOAVEZE_PLUS_URL . 'assets/js/frontend/addons.js',
+                array('jquery', 'moaveze-plus-main'),
+                MOAVEZE_PLUS_VERSION,
+                true
+            );
+            wp_localize_script('moaveze-plus-addons', 'moavezeAddons', array(
+                'reportEnabled'  => get_option('moaveze_addon_report_listing') === 'yes',
+                'compareEnabled' => get_option('moaveze_addon_compare_listings') === 'yes',
+                'qrEnabled'      => get_option('moaveze_addon_qr_code') === 'yes',
+            ));
+        }
 
         // Localize scripts
         wp_localize_script('moaveze-plus-main', 'moavezePlus', array(
@@ -332,6 +365,19 @@ final class Moaveze_Plus {
             'moaveze-plus-admin',
             MOAVEZE_PLUS_URL . 'assets/js/admin/admin.js',
             array('jquery', 'wp-color-picker'),
+            MOAVEZE_PLUS_VERSION,
+            true
+        );
+
+        // AI Valuation admin JS (metabox on the listing edit screen +
+        // "test connection" button on Settings > هوش مصنوعی) - staff-only
+        // surfaces, but the script itself is harmless to load anywhere
+        // in wp-admin since it only binds to elements that don't exist
+        // outside those specific screens.
+        wp_enqueue_script(
+            'moaveze-plus-ai-valuation',
+            MOAVEZE_PLUS_URL . 'assets/js/admin/ai-valuation.js',
+            array('jquery'),
             MOAVEZE_PLUS_VERSION,
             true
         );

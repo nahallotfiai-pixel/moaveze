@@ -123,10 +123,22 @@ class Moaveze_Submission_Form {
                                 </div>
                                 <div class="moaveze-field">
                                     <label for="property_district">منطقه <span class="required">*</span></label>
-                                    <select id="property_district" name="property_district" required>
+                                    <!--
+                                        UX FIX: with the district list now
+                                        much more comprehensive (~60
+                                        entries), a plain native <select>
+                                        requires a lot of scrolling.
+                                        .moaveze-searchable-select turns
+                                        this into a type-to-filter combobox
+                                        (see main.js initSearchableSelects())
+                                        while keeping the underlying
+                                        <select> fully functional for
+                                        required-field validation/submit.
+                                    -->
+                                    <select id="property_district" name="property_district" required class="moaveze-searchable-select" data-placeholder="جستجوی منطقه...">
                                         <option value="">انتخاب کنید...</option>
                                         <?php
-                                        $districts = get_terms(array('taxonomy' => 'moaveze_district', 'hide_empty' => false));
+                                        $districts = get_terms(array('taxonomy' => 'moaveze_district', 'hide_empty' => false, 'orderby' => 'name'));
                                         if (!is_wp_error($districts)) :
                                             foreach ($districts as $district) :
                                         ?>
