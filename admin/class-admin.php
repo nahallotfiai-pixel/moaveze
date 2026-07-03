@@ -144,6 +144,26 @@ class Moaveze_Admin {
             'moaveze-analytics',
             array($this, 'render_analytics_page')
         );
+
+        // AI/Manual Valuation - dedicated, discoverable admin page.
+        // FIX: previously the ONLY way to reach this staff-only feature
+        // was a metabox buried at the bottom of each individual listing's
+        // edit screen, with zero link from the dashboard, main menu, or
+        // anywhere else - exactly what the user reported ("نه در پنل نه
+        // در داشبورد هست"). This adds a real menu item + a list of every
+        // listing with its current valuation status, each row linking
+        // straight to that listing's valuation metabox.
+        // capability: visible to admins AND consultants (moaveze_verify_listings),
+        // matching Moaveze_AI_Valuation::current_user_is_staff().
+        $valuation_cap = current_user_can('manage_options') ? 'manage_options' : 'moaveze_verify_listings';
+        add_submenu_page(
+            'moaveze-plus',
+            'ارزش‌گذاری ملک',
+            'ارزش‌گذاری ملک',
+            $valuation_cap,
+            'moaveze-valuations',
+            array($this, 'render_valuations_page')
+        );
     }
 
     /**
@@ -202,6 +222,16 @@ class Moaveze_Admin {
      */
     public function render_analytics_page() {
         include MOAVEZE_PLUS_PATH . 'admin/views/analytics.php';
+    }
+
+    /**
+     * Render the dedicated Valuations page (see add_menu_pages() note).
+     */
+    public function render_valuations_page() {
+        if (!current_user_can('manage_options') && !current_user_can('moaveze_verify_listings')) {
+            wp_die('دسترسی ندارید');
+        }
+        include MOAVEZE_PLUS_PATH . 'admin/views/valuations.php';
     }
 
     /**

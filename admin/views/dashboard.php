@@ -146,12 +146,44 @@ $activities = Moaveze_Dashboard::get_recent_activity();
                 <span class="dashicons dashicons-email-alt"></span>
                 <span>پیشنهادات</span>
             </a>
+            <a href="<?php echo admin_url('admin.php?page=moaveze-valuations'); ?>" class="moaveze-action-btn">
+                <span class="dashicons dashicons-chart-line"></span>
+                <span>ارزش‌گذاری ملک</span>
+            </a>
             <a href="<?php echo admin_url('admin.php?page=moaveze-settings'); ?>" class="moaveze-action-btn">
                 <span class="dashicons dashicons-admin-generic"></span>
                 <span>تنظیمات</span>
             </a>
         </div>
     </div>
+
+    <!-- Data Repair Tools (NEW) -->
+    <div class="moaveze-section" style="background:#fff7ed;border:1px solid #fed7aa;border-radius:12px;padding:20px;margin-top:20px;">
+        <h2 style="color:#9a3412;"><span class="dashicons dashicons-admin-tools"></span> ابزار اصلاح داده‌های قدیمی</h2>
+        <p style="color:#c2410c;">
+            برخی آگهی‌های قدیمی که قبل از رفع باگ ثبت شده‌اند، ممکن است نام ویژگی‌ها (مثل «پارکینگ»، «آسانسور») را به‌صورت انگلیسی (parking, elevator...) ذخیره کرده باشند.
+            این ابزار همه آگهی‌های موجود را بررسی و این موارد را به فارسی اصلاح می‌کند (فقط یک‌بار لازم است اجرا شود).
+        </p>
+        <button id="repair-feature-terms" class="button button-primary" style="background:#ea580c;border-color:#ea580c;">
+            <span class="dashicons dashicons-hammer"></span> اصلاح نام ویژگی‌های انگلیسی
+        </button>
+        <div id="repair-feature-result" style="margin-top:10px;"></div>
+    </div>
+    <script>
+    jQuery(function($) {
+        $('#repair-feature-terms').on('click', function() {
+            var $btn = $(this).prop('disabled', true).text('در حال بررسی و اصلاح...');
+            $.post(ajaxurl, { action: 'moaveze_repair_feature_terms', nonce: moavezeAdmin.nonce }, function(r) {
+                if (r.success) {
+                    $('#repair-feature-result').html('<p style="color:#16a34a;">✓ ' + r.data.message + '</p>');
+                } else {
+                    $('#repair-feature-result').html('<p style="color:#dc2626;">✗ ' + (r.data || 'خطا') + '</p>');
+                }
+                $btn.prop('disabled', false).html('<span class="dashicons dashicons-hammer"></span> اصلاح نام ویژگی‌های انگلیسی');
+            });
+        });
+    });
+    </script>
 
     <!-- Sample Data Tools -->
     <div class="moaveze-section" style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:20px;margin-top:20px;">

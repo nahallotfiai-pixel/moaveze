@@ -17,6 +17,7 @@ class Moaveze_Meta_Fields {
         add_action('add_meta_boxes', array(__CLASS__, 'add_meta_boxes'));
         add_action('save_post_moaveze_exchange', array(__CLASS__, 'save_meta'));
         add_action('pre_get_posts', array(__CLASS__, 'hide_private_reciprocal_listings'));
+        add_action('wp_ajax_moaveze_repair_feature_terms', array(__CLASS__, 'ajax_repair_feature_terms'));
     }
 
     /**
@@ -306,6 +307,83 @@ class Moaveze_Meta_Fields {
             array('key' => '_moaveze_visibility', 'value' => 'private', 'compare' => '!='),
         );
         $query->set('meta_query', $meta_query);
+    }
+
+    /**
+     * ONE-TIME REPAIR TOOL (dashboard button): fixes listings that were
+     * created BEFORE the English-slug-vs-Persian-term bug fix - i.e. any
+     * moaveze_exchange post whose "moaveze_feature" taxonomy terms still
+     * literally read "parking"/"elevator"/etc. in English (this is
+     * exactly the bug the user found live on tabrizhome.com - the fix
+     * applied earlier only prevents the bug for NEW submissions going
+     * forward, it does not retroactively repair listings that already
+     * have the bad English terms saved).
+     *
+     * For every English slug term that still exists in moaveze_feature:
+     *   1. Re-assign every post that has that English term to the
+     *      correct Persian term instead (creating the Persian term if
+     *      it doesn't exist yet).
+     *   2. Delete the now-empty English term entirely so it can never
+     *      show up again.
+     * Also re-syncs each affected post's boolean checkbox meta
+     * (_moaveze_parking, etc.) so the wp-admin metabox checkboxes match.
+     */
+    public static function ajax_repair_feature_terms() {
+        check_ajax_referer('moaveze_admin_nonce', 'nonce');
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('دسترسی ندارید');
+        }
+
+        $feature_map = self::get_feature_taxonomy_map(); // english_key => persian_name
+        $fixed_posts = array();
+        $removed_terms = array();
+
+        foreach ($feature_map as $english_key => $persian_name) {
+            // Does a term literally named with the English slug exist?
+            $bad_term = get_term_by('name', $english_key, 'moaveze_feature');
+            if (!$bad_term) continue;
+
+            // Find (or create) the correct Persian term.
+            $good_term = get_term_by('name', $persian_name, 'moaveze_feature');
+            if (!$good_term) {
+                $inserted = wp_insert_term($persian_name, 'moaveze_feature');
+                if (is_wp_error($inserted)) continue;
+                $good_term = get_term($inserted['term_id'], 'moaveze_feature');
+            }
+
+            // Every post currently tagged with the bad English term.
+            $affected_posts = get_posts(array(
+                'post_type'      => 'moaveze_exchange',
+                'post_status'    => 'any',
+                'numberposts'    => -1,
+                'fields'         => 'ids',
+                'tax_query'      => array(array(
+                    'taxonomy' => 'moaveze_feature',
+                    'field'    => 'term_id',
+                    'terms'    => $bad_term->term_id,
+                )),
+            ));
+
+            foreach ($affected_posts as $post_id) {
+                wp_set_object_terms($post_id, array($good_term->term_id), 'moaveze_feature', true);
+                wp_remove_object_terms($post_id, $bad_term->term_id, 'moaveze_feature');
+                update_post_meta($post_id, '_moaveze_' . $english_key, '1');
+                if (!in_array($post_id, $fixed_posts, true)) {
+                    $fixed_posts[] = $post_id;
+                }
+            }
+
+            wp_delete_term($bad_term->term_id, 'moaveze_feature');
+            $removed_terms[] = $english_key;
+        }
+
+        wp_send_json_success(array(
+            'message'       => empty($removed_terms)
+                ? 'هیچ ویژگی خرابی پیدا نشد؛ همه چیز از قبل درست بود.'
+                : sprintf('%d آگهی اصلاح شد و %d ویژگی انگلیسی خراب حذف شد.', count($fixed_posts), count($removed_terms)),
+            'fixed_posts'   => count($fixed_posts),
+            'removed_terms' => $removed_terms,
+        ));
     }
 
     /**
