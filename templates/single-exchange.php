@@ -41,9 +41,21 @@ $expert_min = get_post_meta($post_id, '_moaveze_expert_min', true);
 $expert_max = get_post_meta($post_id, '_moaveze_expert_max', true);
 $expert_value_type = get_post_meta($post_id, '_moaveze_expert_value_type', true);
 
+// DEFENSIVE FIX: get_the_terms() returns a WP_Error object (not false)
+// if the taxonomy itself is misconfigured/missing, and previously
+// every "if ($type_terms)" check below would have evaluated a WP_Error
+// object as truthy (it's a non-empty object), so $type_terms[0] could
+// fatal with "cannot use object of type WP_Error as array". Explicitly
+// normalize to null/empty-array here so every downstream check
+// ("if ($type_terms) ...", "$type_terms[0]->name", etc.) is safe.
 $type_terms = get_the_terms($post_id, 'moaveze_property_type');
+if (is_wp_error($type_terms) || empty($type_terms)) $type_terms = null;
+
 $district_terms = get_the_terms($post_id, 'moaveze_district');
+if (is_wp_error($district_terms) || empty($district_terms)) $district_terms = null;
+
 $feature_terms = get_the_terms($post_id, 'moaveze_feature');
+if (is_wp_error($feature_terms) || empty($feature_terms)) $feature_terms = null;
 
 $exchange_labels = array(
     'property_only'  => 'ملک با ملک',

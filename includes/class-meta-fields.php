@@ -493,13 +493,25 @@ class Moaveze_Meta_Fields {
                 );
                 break;
             case 'desired_property_type':
+                // NOTE: unlike property_type/district (real taxonomy
+                // relationships), "desired_property_type" is stored as
+                // plain post META (_moaveze_desired_property_type) and
+                // displayed VERBATIM on the frontend (see
+                // templates/single-exchange.php). So this option's
+                // value must be the term's actual Persian NAME, not its
+                // slug - using the slug here would silently re-introduce
+                // the same "raw slug shown on the listing page" bug via
+                // the wp-admin edit screen, even after the frontend
+                // submission form's version of this field was fixed to
+                // resolve to a name (see resolve_term_name() in
+                // class-submission-form.php).
                 $terms = get_terms(array(
                     'taxonomy'   => 'moaveze_property_type',
                     'hide_empty' => false,
                 ));
                 if (!is_wp_error($terms)) {
                     foreach ($terms as $term) {
-                        $options[$term->slug] = $term->name;
+                        $options[$term->name] = $term->name;
                     }
                 }
                 break;

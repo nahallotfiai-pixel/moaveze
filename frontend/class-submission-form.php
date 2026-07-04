@@ -110,6 +110,29 @@ class Moaveze_Submission_Form {
                             <div class="moaveze-field-group moaveze-field-grid-2">
                                 <div class="moaveze-field">
                                     <label for="property_type">نوع ملک <span class="required">*</span></label>
+                                    <!--
+                                        ROOT-CAUSE FIX (نوع ملک درج نمیشه):
+                                        this <select> now submits the
+                                        term's numeric ID instead of its
+                                        SLUG. Persian-language slugs are
+                                        stored by WordPress as raw
+                                        percent-encoded UTF-8 bytes (e.g.
+                                        "%d8%a2%d9%be..." for "آپارتمان" -
+                                        the same encoding visible in this
+                                        site's own /exchange/ permalinks),
+                                        which is fragile to round-trip
+                                        through HTML attribute encoding,
+                                        jQuery's serializeArray(), and
+                                        PHP's $_POST superglobal decoding
+                                        all at once - any mismatch there
+                                        silently breaks the slug-to-term
+                                        lookup. A term ID is a plain
+                                        integer with none of these
+                                        failure modes, so this eliminates
+                                        the entire bug class at the root
+                                        instead of just patching the
+                                        symptom again.
+                                    -->
                                     <select id="property_type" name="property_type" required>
                                         <option value="">انتخاب کنید...</option>
                                         <?php
@@ -117,7 +140,7 @@ class Moaveze_Submission_Form {
                                         if (!is_wp_error($types)) :
                                             foreach ($types as $type) :
                                         ?>
-                                            <option value="<?php echo esc_attr($type->slug); ?>"><?php echo esc_html($type->name); ?></option>
+                                            <option value="<?php echo esc_attr($type->term_id); ?>"><?php echo esc_html($type->name); ?></option>
                                         <?php endforeach; endif; ?>
                                     </select>
                                 </div>
@@ -134,6 +157,8 @@ class Moaveze_Submission_Form {
                                         while keeping the underlying
                                         <select> fully functional for
                                         required-field validation/submit.
+                                        Also submits term ID now - see the
+                                        property_type comment above for why.
                                     -->
                                     <select id="property_district" name="property_district" required class="moaveze-searchable-select" data-placeholder="جستجوی منطقه...">
                                         <option value="">انتخاب کنید...</option>
@@ -142,7 +167,7 @@ class Moaveze_Submission_Form {
                                         if (!is_wp_error($districts)) :
                                             foreach ($districts as $district) :
                                         ?>
-                                            <option value="<?php echo esc_attr($district->slug); ?>"><?php echo esc_html($district->name); ?></option>
+                                            <option value="<?php echo esc_attr($district->term_id); ?>"><?php echo esc_html($district->name); ?></option>
                                         <?php endforeach; endif; ?>
                                     </select>
                                 </div>
@@ -379,7 +404,7 @@ class Moaveze_Submission_Form {
                                             if (!is_wp_error($types)) :
                                                 foreach ($types as $type) :
                                             ?>
-                                                <option value="<?php echo esc_attr($type->slug); ?>"><?php echo esc_html($type->name); ?></option>
+                                                <option value="<?php echo esc_attr($type->term_id); ?>"><?php echo esc_html($type->name); ?></option>
                                             <?php endforeach; endif; ?>
                                         </select>
                                     </div>
@@ -400,7 +425,7 @@ class Moaveze_Submission_Form {
                                                 foreach ($districts as $district) :
                                             ?>
                                                 <label class="moaveze-chip">
-                                                    <input type="checkbox" name="desired_districts[]" value="<?php echo esc_attr($district->slug); ?>">
+                                                    <input type="checkbox" name="desired_districts[]" value="<?php echo esc_attr($district->term_id); ?>">
                                                     <span><?php echo esc_html($district->name); ?></span>
                                                 </label>
                                             <?php endforeach; endif; ?>
@@ -567,30 +592,32 @@ class Moaveze_Submission_Form {
 
 
     /**
-     * Resolve a taxonomy term submitted by its SLUG (as every <select>
-     * in this plugin's forms does) and attach it to the post by term
-     * ID - the only reliable way to do this, since wp_set_object_terms()
-     * treats a raw string as a term NAME (creating a new term if no
-     * exact name match exists) rather than as a slug. This is the fix
-     * for the "نوع ملک درج نمیشه" bug: passing a slug like "apartment"
-     * straight into wp_set_object_terms() previously created/matched a
-     * bogus term instead of the real, already-seeded Persian term.
+     * Resolve a submitted taxonomy value to a real term and attach it
+     * to the post by term ID.
      *
-     * Falls back to treating the value as a term NAME if no slug match
-     * is found, for backward compatibility with any code path that
-     * might still submit a name instead of a slug.
+     * ROOT-CAUSE FIX HISTORY: an earlier fix resolved the submitted
+     * value as a term SLUG via get_term_by('slug', ...) - but Persian-
+     * language slugs are raw percent-encoded UTF-8 strings, which are
+     * fragile to round-trip correctly through HTML attribute encoding
+     * -> jQuery serializeArray() -> PHP $_POST decoding all at once,
+     * and any single mismatch anywhere in that chain silently breaks
+     * the lookup (exactly what the site owner kept experiencing even
+     * after the slug-lookup fix). The actual, permanent fix is to never
+     * transmit the slug at all: every <select> in this form now submits
+     * the term's plain numeric ID (see render_form() above), which has
+     * none of these encoding failure modes. This method still accepts
+     * a non-numeric value as a graceful fallback (treated as slug, then
+     * name) purely for backward compatibility with any external
+     * integration still posting the old format.
      */
-    public static function set_taxonomy_by_slug($post_id, $taxonomy, $slug_or_name) {
-        $slug_or_name = sanitize_text_field($slug_or_name);
-        if (!$slug_or_name) {
+    public static function set_taxonomy_by_slug($post_id, $taxonomy, $value) {
+        $value = is_scalar($value) ? trim((string) $value) : '';
+        if ($value === '') {
             wp_set_object_terms($post_id, array(), $taxonomy);
             return;
         }
 
-        $term = get_term_by('slug', $slug_or_name, $taxonomy);
-        if (!$term) {
-            $term = get_term_by('name', $slug_or_name, $taxonomy);
-        }
+        $term = self::resolve_term($taxonomy, $value);
 
         if ($term) {
             wp_set_object_terms($post_id, array((int) $term->term_id), $taxonomy);
@@ -598,23 +625,54 @@ class Moaveze_Submission_Form {
             // Last resort: let WordPress create it (matches old
             // behavior) so a submission is never silently dropped just
             // because the term genuinely doesn't exist yet.
-            wp_set_object_terms($post_id, array($slug_or_name), $taxonomy);
+            wp_set_object_terms($post_id, array($value), $taxonomy);
         }
     }
 
     /**
-     * Resolve a term slug to its human-readable Persian name, for the
-     * few fields (like "desired_property_type") that are stored as
-     * plain post meta rather than an actual taxonomy relationship, but
-     * are still populated from a <select> whose options submit a slug.
-     * Returns the original input unchanged if no matching term exists
-     * (e.g. empty "فرقی ندارد" selection).
+     * Resolve a submitted term reference - a numeric term ID (the
+     * current, reliable format every <select> in this plugin submits),
+     * or (for backward compatibility only) a slug or name - to the
+     * actual WP_Term object.
      */
-    private static function resolve_term_name($taxonomy, $slug) {
-        $slug = sanitize_text_field($slug);
-        if (!$slug) return '';
-        $term = get_term_by('slug', $slug, $taxonomy);
-        return $term ? $term->name : $slug;
+    private static function resolve_term($taxonomy, $value) {
+        $value = is_scalar($value) ? trim((string) $value) : '';
+        if ($value === '') return null;
+
+        if (ctype_digit($value)) {
+            $term = get_term((int) $value, $taxonomy);
+            if ($term && !is_wp_error($term)) return $term;
+        }
+
+        $term = get_term_by('slug', $value, $taxonomy);
+        if ($term) return $term;
+
+        return get_term_by('name', $value, $taxonomy) ?: null;
+    }
+
+    /**
+     * Resolve a submitted term reference (ID, or legacy slug/name) to
+     * its human-readable Persian name, for the few fields (like
+     * "desired_property_type") that are stored as plain post meta
+     * rather than an actual taxonomy relationship. Returns the original
+     * input unchanged if no matching term exists (e.g. empty "فرقی
+     * ندارد" selection, or literal free text).
+     */
+    private static function resolve_term_name($taxonomy, $value) {
+        $value = is_scalar($value) ? trim((string) $value) : '';
+        if ($value === '') return '';
+        $term = self::resolve_term($taxonomy, $value);
+        return $term ? $term->name : $value;
+    }
+
+    /**
+     * Public wrapper around resolve_term_name(), for other modules
+     * (e.g. Moaveze_Offers::create_reciprocal_listing()) that need the
+     * same ID/slug/name -> Persian-name resolution but live in a
+     * different class.
+     */
+    public static function resolve_term_name_public($taxonomy, $value) {
+        return self::resolve_term_name($taxonomy, $value);
     }
 
     /**
@@ -730,10 +788,23 @@ class Moaveze_Submission_Form {
             update_post_meta($post_id, '_moaveze_' . $key, $value);
         }
 
-        // Handle desired districts (multiple)
+        // Handle desired districts (multiple).
+        // BUG FIX: these chip-picker checkboxes submit term IDs (see
+        // above), but the matching algorithm's district_compatibility()
+        // (class-matching.php) compares this list against OTHER
+        // listings' plain-text district NAME column
+        // (moaveze_exchanges.district, e.g. "ولیعصر") via in_array() -
+        // so storing raw IDs/slugs here meant that comparison could
+        // never match anything, silently breaking district-based
+        // matching. Resolve every submitted value to its real term NAME
+        // before storing, so it's directly comparable.
+        $desired_district_names = array();
         if (!empty($_POST['desired_districts'])) {
-            $desired_districts = array_map('sanitize_text_field', $_POST['desired_districts']);
-            update_post_meta($post_id, '_moaveze_desired_districts', $desired_districts);
+            foreach ((array) $_POST['desired_districts'] as $raw) {
+                $name = self::resolve_term_name('moaveze_district', $raw);
+                if ($name) $desired_district_names[] = $name;
+            }
+            update_post_meta($post_id, '_moaveze_desired_districts', $desired_district_names);
         }
 
         // Handle alternative conditions
@@ -784,6 +855,15 @@ class Moaveze_Submission_Form {
                 'desired_property_type' => self::resolve_term_name('moaveze_property_type', $_POST['desired_property_type'] ?? ''),
                 'desired_min_value'     => absint(str_replace(array(',', ' '), '', $_POST['desired_min_value'] ?? '')),
                 'desired_max_value'     => absint(str_replace(array(',', ' '), '', $_POST['desired_max_value'] ?? '')),
+                // BUG FIX: previously this table's desired_districts
+                // column (the one class-matching.php's
+                // district_compatibility() actually reads via
+                // json_decode(...)/in_array()) was NEVER populated at
+                // all - only a differently-keyed post meta value was
+                // saved, which nothing in the matching algorithm reads.
+                // District-based matching preference therefore silently
+                // never worked for any listing submitted via this form.
+                'desired_districts'     => !empty($desired_district_names) ? wp_json_encode($desired_district_names) : null,
                 'cash_difference'       => absint(str_replace(array(',', ' '), '', $_POST['cash_difference'] ?? '')),
                 'cash_direction'        => sanitize_text_field($_POST['cash_direction'] ?? 'give'),
                 'additional_assets'     => sanitize_textarea_field($_POST['additional_assets'] ?? ''),
@@ -792,7 +872,7 @@ class Moaveze_Submission_Form {
                 'contact_phone'         => sanitize_text_field($_POST['contact_phone']),
                 'contact_email'         => sanitize_email($_POST['contact_email'] ?? ''),
             ),
-            array('%d','%d','%s','%d','%d','%d','%s','%s','%s','%s','%s','%s','%s','%d','%d','%d','%s','%s','%s','%s','%s','%s')
+            array('%d','%d','%s','%d','%d','%d','%s','%s','%s','%s','%s','%s','%s','%d','%d','%s','%s','%s','%s','%s','%s','%s')
         );
 
         wp_send_json_success(array(

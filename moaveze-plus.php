@@ -24,7 +24,7 @@ define('MOAVEZE_PLUS_FILE', __FILE__);
 define('MOAVEZE_PLUS_PATH', plugin_dir_path(__FILE__));
 define('MOAVEZE_PLUS_URL', plugin_dir_url(__FILE__));
 define('MOAVEZE_PLUS_BASENAME', plugin_basename(__FILE__));
-define('MOAVEZE_PLUS_DB_VERSION', '1.3.0'); // bumped: added manual_min_value/manual_max_value range columns to moaveze_valuations (expert valuation range, kept separate from owner's price)
+define('MOAVEZE_PLUS_DB_VERSION', '1.4.0'); // bumped: added ai_suggestion* columns to moaveze_matches/moaveze_chains (AI-assisted deal-structure suggestions for matches + chain swaps)
 
 /**
  * Main Plugin Class
@@ -96,6 +96,7 @@ final class Moaveze_Plus {
         require_once MOAVEZE_PLUS_PATH . 'includes/modules/class-price-estimator.php';
         require_once MOAVEZE_PLUS_PATH . 'includes/modules/class-favorites.php';
         require_once MOAVEZE_PLUS_PATH . 'includes/modules/class-ai-valuation.php';
+        require_once MOAVEZE_PLUS_PATH . 'includes/modules/class-ai-suggestions.php';
         require_once MOAVEZE_PLUS_PATH . 'includes/modules/class-addons.php';
 
         // REST API
@@ -326,10 +327,10 @@ final class Moaveze_Plus {
             // it doesn't need an extra AJAX round trip just to populate
             // two <select> lists.
             'propertyTypes' => array_map(function ($t) {
-                return array('slug' => $t->slug, 'name' => $t->name);
+                return array('id' => $t->term_id, 'slug' => $t->slug, 'name' => $t->name);
             }, get_terms(array('taxonomy' => 'moaveze_property_type', 'hide_empty' => false)) ?: array()),
             'districts' => array_map(function ($t) {
-                return array('slug' => $t->slug, 'name' => $t->name);
+                return array('id' => $t->term_id, 'slug' => $t->slug, 'name' => $t->name);
             }, get_terms(array('taxonomy' => 'moaveze_district', 'hide_empty' => false)) ?: array()),
             'strings' => array(
                 'loading' => 'در حال بارگذاری...',

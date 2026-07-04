@@ -164,6 +164,15 @@ class Moaveze_Offers {
      */
     private function create_reciprocal_listing($data) {
         $title = sanitize_text_field($data['reg_title'] ?? '');
+        // ROOT-CAUSE FIX: these <select> fields now submit the term's
+        // numeric ID (see offers.js populateRegisterPropertySelects())
+        // instead of its slug - Persian-language slugs are raw percent-
+        // encoded UTF-8, fragile to round-trip through HTML attributes +
+        // jQuery serialization + PHP decoding all at once, which is
+        // exactly why "نوع ملک درج نمیشه" kept recurring even after an
+        // earlier slug-based fix. set_taxonomy_by_slug()/resolve_term()
+        // below accept either an ID or (for backward compatibility) a
+        // slug/name.
         $property_type = sanitize_text_field($data['reg_property_type'] ?? '');
         $district = sanitize_text_field($data['reg_district'] ?? '');
         $value = absint(str_replace(array(',', ' ', '٬'), '', $data['reg_value'] ?? ''));
@@ -210,8 +219,8 @@ class Moaveze_Offers {
         // Resolve to the real Persian names for the plain-text columns
         // below (moaveze_exchanges.property_type/district), read
         // directly by the matching algorithm and AI valuation prompt.
-        $property_type_name = ($t = get_term_by('slug', $property_type, 'moaveze_property_type')) ? $t->name : $property_type;
-        $district_name = ($t = get_term_by('slug', $district, 'moaveze_district')) ? $t->name : $district;
+        $property_type_name = Moaveze_Submission_Form::resolve_term_name_public('moaveze_property_type', $property_type);
+        $district_name = Moaveze_Submission_Form::resolve_term_name_public('moaveze_district', $district);
 
         $meta = array(
             'property_value' => $value,

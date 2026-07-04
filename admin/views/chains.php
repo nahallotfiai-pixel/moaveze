@@ -65,7 +65,16 @@ $chains = $wpdb->get_results("SELECT * FROM $table_chains ORDER BY created_at DE
                     </div>
                     <div class="chain-actions">
                         <button class="button button-primary">پیگیری توسط مشاور</button>
+                        <button class="button ai-suggest-btn" data-type="chain" data-id="<?php echo esc_attr($chain->id); ?>" data-has-suggestion="<?php echo $chain->ai_suggestion ? '1' : '0'; ?>">
+                            <span class="dashicons dashicons-superhero-alt"></span>
+                            <?php echo $chain->ai_suggestion ? 'مشاهده پیشنهاد هوش مصنوعی' : 'پیشنهاد هوش مصنوعی برای تسویه'; ?>
+                            <?php if ($chain->ai_suggestion_status === 'approved') : ?>
+                                <span class="ai-suggest-badge">✓</span>
+                            <?php endif; ?>
+                        </button>
                     </div>
+                    <!-- AI suggestion panel: filled in on demand via AJAX -->
+                    <div class="ai-suggestion-panel" data-type="chain" data-id="<?php echo esc_attr($chain->id); ?>" style="display:none;"></div>
                 </div>
             <?php endforeach; ?>
         </div>

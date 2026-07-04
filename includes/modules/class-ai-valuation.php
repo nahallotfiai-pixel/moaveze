@@ -507,6 +507,48 @@ class Moaveze_AI_Valuation {
         return current_user_can('manage_options') || current_user_can('moaveze_verify_listings');
     }
 
+    /**
+     * PUBLIC wrapper: is the AI valuation system configured and ready
+     * to answer a prompt right now? Reused by other staff-only AI
+     * features that share this same provider/proxy/worker
+     * infrastructure - specifically Moaveze_AI_Suggestions (see
+     * includes/modules/class-ai-suggestions.php), which asks the AI to
+     * suggest deal structures for matches and chain swaps instead of
+     * property valuations.
+     */
+    public function is_ready() {
+        if (get_option('moaveze_ai_valuation_enabled') !== 'yes') return false;
+        $provider = get_option('moaveze_ai_active_provider', 'gemini');
+        return get_option("moaveze_ai_{$provider}_enabled") === 'yes';
+    }
+
+    /**
+     * PUBLIC wrapper around call_ai_provider() using whichever provider
+     * is currently configured as active in Settings > هوش مصنوعی - lets
+     * other staff-only AI features (match/chain suggestions) reuse the
+     * exact same provider dispatch, proxy, and Cloudflare Worker relay
+     * logic without duplicating it.
+     *
+     * @return array ['success' => bool, 'text' => string, 'error' => string]
+     */
+    public function ask($prompt, $json_mode = true) {
+        if (!$this->is_ready()) {
+            return array('success' => false, 'text' => '', 'error' => 'ارزش‌گذاری هوش مصنوعی غیرفعال است یا ارائه‌دهنده تنظیم نشده است');
+        }
+        $provider = get_option('moaveze_ai_active_provider', 'gemini');
+        return $this->call_ai_provider($provider, $prompt, $json_mode);
+    }
+
+    /**
+     * PUBLIC: name of the currently-active provider, for display
+     * purposes in other modules (e.g. "پیشنهاد Google Gemini").
+     */
+    public function get_active_provider_label() {
+        $provider = get_option('moaveze_ai_active_provider', 'gemini');
+        $providers = self::get_providers();
+        return $providers[$provider]['label'] ?? $provider;
+    }
+
 
     /**
      * Register all AI/proxy settings (rendered by the new "هوش مصنوعی"

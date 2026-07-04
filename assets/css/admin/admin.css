@@ -872,6 +872,83 @@
     font-weight: 700;
 }
 
+/* ===== AI Suggestions (Matches & Chains) ===== */
+.ai-suggest-btn { position: relative; }
+.ai-suggest-badge {
+    display: inline-block;
+    background: #16a34a;
+    color: #fff;
+    border-radius: 50%;
+    width: 16px;
+    height: 16px;
+    font-size: 10px;
+    line-height: 16px;
+    text-align: center;
+    margin-right: 4px;
+}
+.ai-suggestion-panel {
+    margin-top: 12px;
+    background: #f5f3ff;
+    border: 1px solid #ddd6fe;
+    border-radius: 12px;
+    padding: 16px;
+}
+.ai-suggestion-loading {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #6b7280;
+    font-size: 13px;
+}
+.ai-suggestion-error { color: #dc2626; margin: 0; }
+.ai-suggestion-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+.ai-suggestion-provider { font-weight: 700; color: #6d28d9; }
+.ai-suggestion-confidence {
+    font-size: 12px;
+    background: #ede9fe;
+    color: #6d28d9;
+    border-radius: 20px;
+    padding: 3px 10px;
+}
+.ai-suggestion-summary {
+    font-size: 14px;
+    font-weight: 600;
+    color: #1e293b;
+    margin: 0 0 12px;
+}
+.ai-structures-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 10px;
+    margin-bottom: 12px;
+}
+.ai-structure-card {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 12px;
+}
+.ai-structure-card strong { display: block; margin-bottom: 4px; color: #1e293b; }
+.ai-structure-card p { margin: 0 0 6px; font-size: 12px; color: #475569; line-height: 1.8; }
+.ai-structure-cash { font-size: 12px; font-weight: 700; color: #16a34a; }
+.ai-suggestion-risks {
+    background: #fff7ed;
+    border: 1px dashed #fed7aa;
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 12px;
+    color: #9a3412;
+    margin-bottom: 12px;
+}
+.ai-suggestion-risks ul { margin: 6px 0 0; padding-right: 18px; }
+.ai-suggestion-footer { display: flex; align-items: center; gap: 8px; }
+.ai-suggestion-approved-label { color: #16a34a; font-weight: 700; font-size: 13px; }
+
 .moaveze-feature-debug-box {
     background: #f0f9ff;
     border: 1px dashed #7dd3fc;

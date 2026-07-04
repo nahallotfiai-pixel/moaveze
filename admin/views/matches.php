@@ -94,7 +94,16 @@ $matches = $wpdb->get_results("SELECT * FROM $table_matches ORDER BY match_score
                         <button class="button button-primary connect-parties-btn" data-match-id="<?php echo esc_attr($match->id); ?>">
                             <span class="dashicons dashicons-phone"></span> ارتباط طرفین
                         </button>
+                        <button class="button ai-suggest-btn" data-type="match" data-id="<?php echo esc_attr($match->id); ?>" data-has-suggestion="<?php echo $match->ai_suggestion ? '1' : '0'; ?>">
+                            <span class="dashicons dashicons-superhero-alt"></span>
+                            <?php echo $match->ai_suggestion ? 'مشاهده پیشنهاد هوش مصنوعی' : 'پیشنهاد هوش مصنوعی برای معامله'; ?>
+                            <?php if ($match->ai_suggestion_status === 'approved') : ?>
+                                <span class="ai-suggest-badge">✓</span>
+                            <?php endif; ?>
+                        </button>
                     </div>
+                    <!-- AI suggestion panel: filled in on demand via AJAX -->
+                    <div class="ai-suggestion-panel" data-type="match" data-id="<?php echo esc_attr($match->id); ?>" style="display:none;"></div>
                 </div>
             <?php endforeach; ?>
         </div>

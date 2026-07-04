@@ -15,6 +15,175 @@
             this.initImportHouzez();
             this.initConnectPartiesModal();
             this.initInstantFeatureToggle();
+            this.initAISuggestions();
+        },
+
+        /**
+         * "پیشنهاد هوش مصنوعی برای معامله/تسویه" button on the Matches
+         * and Chain Swaps admin pages - per explicit user request that
+         * AI be able to suggest (and let the consultant save/approve)
+         * deal structures there too, not just property valuations.
+         * Reuses the same staff-only AI infrastructure as the
+         * valuation metabox (see class-ai-suggestions.php).
+         */
+        initAISuggestions() {
+            $(document).on('click', '.ai-suggest-btn', function() {
+                const $btn = $(this);
+                const type = $btn.data('type'); // 'match' or 'chain'
+                const id = $btn.data('id');
+                const hasSuggestion = $btn.data('has-suggestion') === 1 || $btn.data('has-suggestion') === '1';
+                const $panel = $(`.ai-suggestion-panel[data-type="${type}"][data-id="${id}"]`);
+
+                // Toggle closed if already open and loaded.
+                if ($panel.is(':visible') && $panel.data('loaded')) {
+                    $panel.slideUp(150);
+                    return;
+                }
+
+                $panel.data('loaded', false).html(`
+                    <div class="ai-suggestion-loading">
+                        <span class="spinner is-active" style="float:none;"></span>
+                        ${hasSuggestion ? 'در حال بارگذاری پیشنهاد ذخیره‌شده...' : 'در حال دریافت پیشنهاد از هوش مصنوعی...'}
+                    </div>
+                `).slideDown(150);
+
+                // If a suggestion already exists, fetch the STORED one
+                // instead of spending another AI request re-generating
+                // it every time the button is clicked.
+                if (hasSuggestion) {
+                    $.post(moavezeAdmin.ajaxUrl, {
+                        action: 'moaveze_get_ai_suggestion',
+                        nonce: moavezeAdmin.nonce,
+                        type: type,
+                        id: id,
+                    }, function(response) {
+                        if (response.success) {
+                            $panel.html(MoavezeAdmin.renderAISuggestion(response.data, type, id, true)).data('loaded', true);
+                        } else {
+                            $panel.html(`<p class="ai-suggestion-error">✗ ${response.data || 'خطا در بارگذاری پیشنهاد'}</p>`);
+                        }
+                    }).fail(function() {
+                        $panel.html('<p class="ai-suggestion-error">✗ خطا در ارتباط با سرور</p>');
+                    });
+                    return;
+                }
+
+                MoavezeAdmin.generateAISuggestion(type, id, $panel, $btn);
+            });
+
+            // "بازتولید پیشنهاد" (regenerate) - explicitly re-run the AI
+            // even though a stored suggestion already exists.
+            $(document).on('click', '.ai-suggestion-regenerate-btn', function() {
+                const $btn = $(this);
+                const type = $btn.data('type');
+                const id = $btn.data('id');
+                const $panel = $(`.ai-suggestion-panel[data-type="${type}"][data-id="${id}"]`);
+                $panel.html(`
+                    <div class="ai-suggestion-loading">
+                        <span class="spinner is-active" style="float:none;"></span>
+                        در حال دریافت پیشنهاد جدید از هوش مصنوعی...
+                    </div>
+                `);
+                MoavezeAdmin.generateAISuggestion(type, id, $panel);
+            });
+
+            // Approve a displayed AI suggestion.
+            $(document).on('click', '.ai-suggestion-approve-btn', function() {
+                const $btn = $(this);
+                const type = $btn.data('type');
+                const id = $btn.data('id');
+
+                $btn.prop('disabled', true);
+                $.post(moavezeAdmin.ajaxUrl, {
+                    action: 'moaveze_approve_ai_suggestion',
+                    nonce: moavezeAdmin.nonce,
+                    type: type,
+                    id: id,
+                }, function(response) {
+                    if (response.success) {
+                        $btn.replaceWith('<span class="ai-suggestion-approved-label">✓ تأیید شده توسط مشاور</span>');
+                    } else {
+                        alert(response.data || 'خطا در تأیید پیشنهاد');
+                        $btn.prop('disabled', false);
+                    }
+                });
+            });
+        },
+
+        /**
+         * Shared "generate a brand-new AI suggestion" AJAX call, used
+         * both by the first-time click on .ai-suggest-btn and by the
+         * explicit "بازتولید پیشنهاد" (regenerate) button.
+         */
+        generateAISuggestion(type, id, $panel, $btn) {
+            const action = type === 'match' ? 'moaveze_suggest_match_deal' : 'moaveze_suggest_chain_deal';
+            const idParam = type === 'match' ? 'match_id' : 'chain_id';
+
+            $.post(moavezeAdmin.ajaxUrl, {
+                action: action,
+                nonce: moavezeAdmin.nonce,
+                [idParam]: id,
+            }, function(response) {
+                if (response.success) {
+                    $panel.html(MoavezeAdmin.renderAISuggestion(response.data, type, id, false)).data('loaded', true);
+                    if ($btn) {
+                        $btn.data('has-suggestion', '1');
+                        $btn.html('<span class="dashicons dashicons-superhero-alt"></span> مشاهده پیشنهاد هوش مصنوعی');
+                    }
+                } else {
+                    $panel.html(`<p class="ai-suggestion-error">✗ ${response.data || 'خطا در دریافت پیشنهاد'}</p>`);
+                }
+            }).fail(function() {
+                $panel.html('<p class="ai-suggestion-error">✗ خطا در ارتباط با سرور</p>');
+            });
+        },
+
+        /**
+         * Render the AI deal-structure suggestion result (summary,
+         * proposed structures with cash amounts, risks, confidence) -
+         * shared markup for both the "just generated" and "viewing
+         * existing" cases.
+         */
+        renderAISuggestion(data, type, id, isExisting) {
+            const structuresHtml = (data.structures || []).map((s) => `
+                <div class="ai-structure-card">
+                    <strong>${s.title || 'ساختار پیشنهادی'}</strong>
+                    <p>${s.description || ''}</p>
+                    ${s.cash_short ? `<span class="ai-structure-cash">💰 ${s.cash_short}${s.cash_direction ? ' (' + s.cash_direction + ')' : ''}</span>` : ''}
+                </div>
+            `).join('');
+
+            const risksHtml = (data.risks || []).length ? `
+                <div class="ai-suggestion-risks">
+                    <strong>نکات و ریسک‌ها:</strong>
+                    <ul>${data.risks.map((r) => `<li>${r}</li>`).join('')}</ul>
+                </div>
+            ` : '';
+
+            const approveBtn = data.status === 'approved'
+                ? '<span class="ai-suggestion-approved-label">✓ تأیید شده توسط مشاور</span>'
+                : `<button type="button" class="button button-primary ai-suggestion-approve-btn" data-type="${type}" data-id="${id}">
+                     <span class="dashicons dashicons-yes"></span> تأیید این پیشنهاد
+                   </button>`;
+
+            const regenerateBtn = isExisting
+                ? `<button type="button" class="button ai-suggestion-regenerate-btn" data-type="${type}" data-id="${id}">
+                     <span class="dashicons dashicons-update"></span> بازتولید پیشنهاد
+                   </button>`
+                : '';
+
+            return `
+                <div class="ai-suggestion-result">
+                    <div class="ai-suggestion-header">
+                        <span class="ai-suggestion-provider">🤖 ${data.provider || 'هوش مصنوعی'}</span>
+                        <span class="ai-suggestion-confidence">میزان اطمینان: ${data.confidence || 'نامشخص'}</span>
+                    </div>
+                    <p class="ai-suggestion-summary">${data.summary || ''}</p>
+                    <div class="ai-structures-grid">${structuresHtml}</div>
+                    ${risksHtml}
+                    <div class="ai-suggestion-footer">${approveBtn}${regenerateBtn}</div>
+                </div>
+            `;
         },
 
         /**

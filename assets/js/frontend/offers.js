@@ -363,16 +363,20 @@
          * moavezePlus.propertyTypes / moavezePlus.districts (see
          * moaveze-plus.php enqueue_frontend_assets()) - avoids an extra
          * AJAX round trip just to populate two dropdowns.
+         *
+         * ROOT-CAUSE FIX: options now submit the term's numeric ID
+         * (t.id/d.id) instead of its slug - see the same fix + full
+         * rationale in class-submission-form.php's render_form().
          */
         populateRegisterPropertySelects() {
             const $type = $('#reg-property-type');
             const $district = $('#reg-district');
 
             (moavezePlus.propertyTypes || []).forEach((t) => {
-                $type.append(`<option value="${t.slug}">${t.name}</option>`);
+                $type.append(`<option value="${t.id}">${t.name}</option>`);
             });
             (moavezePlus.districts || []).forEach((d) => {
-                $district.append(`<option value="${d.slug}">${d.name}</option>`);
+                $district.append(`<option value="${d.id}">${d.name}</option>`);
             });
 
             // The district <select> is created dynamically (modal markup
