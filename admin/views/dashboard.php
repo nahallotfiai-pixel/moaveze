@@ -157,6 +157,16 @@ $activities = Moaveze_Dashboard::get_recent_activity();
         </div>
     </div>
 
+    <!-- Asset Cache Explanation (NEW) -->
+    <div class="moaveze-section" style="background:#eef2ff;border:1px solid #c7d2fe;border-radius:12px;padding:20px;margin-top:20px;">
+        <h2 style="color:#3730a3;"><span class="dashicons dashicons-performance"></span> اگر بعد از بروزرسانی افزونه چیزی تغییر نکرد</h2>
+        <p style="color:#3730a3;">
+            فایل‌های ظاهری افزونه (CSS/JS) اکنون به‌صورت خودکار با هر تغییر کد، نسخه جدید می‌گیرند - یعنی مرورگر شما دیگر نباید نسخه قدیمی را کش کند (این یک باگ قدیمی بود که اصلاح شد).
+            اما اگر روی سایت شما یک افزونه کش صفحه (مثل LiteSpeed Cache، WP Rocket یا مشابه) نصب است، ممکن است همچنان یک نسخه قدیمی از HTML صفحه را نمایش دهد تا زمانی که آن کش را به‌صورت جداگانه پاک کنید یا منقضی شود.
+            در این صورت، کش آن افزونه را از پیشخوان اصلی وردپرس پاک کنید و صفحه را با Ctrl+F5 (یا Cmd+Shift+R در مک) رفرش کنید.
+        </p>
+    </div>
+
     <!-- Data Repair Tools (NEW) -->
     <div class="moaveze-section" style="background:#fff7ed;border:1px solid #fed7aa;border-radius:12px;padding:20px;margin-top:20px;">
         <h2 style="color:#9a3412;"><span class="dashicons dashicons-admin-tools"></span> ابزار اصلاح داده‌های قدیمی</h2>

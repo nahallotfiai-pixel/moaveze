@@ -74,7 +74,7 @@ class Moaveze_Elementor_Loader {
             'moaveze-elementor-editor',
             MOAVEZE_PLUS_URL . 'assets/css/elementor-editor.css',
             array(),
-            MOAVEZE_PLUS_VERSION
+            moaveze_asset_version('assets/css/elementor-editor.css')
         );
     }
 }

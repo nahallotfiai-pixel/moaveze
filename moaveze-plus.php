@@ -27,6 +27,32 @@ define('MOAVEZE_PLUS_BASENAME', plugin_basename(__FILE__));
 define('MOAVEZE_PLUS_DB_VERSION', '1.4.0'); // bumped: added ai_suggestion* columns to moaveze_matches/moaveze_chains (AI-assisted deal-structure suggestions for matches + chain swaps)
 
 /**
+ * ROOT-CAUSE FIX for "my fix didn't show up on the live site" reports:
+ * every single CSS/JS asset in this plugin was enqueued with the
+ * STATIC constant MOAVEZE_PLUS_VERSION ('1.0.0') as its cache-busting
+ * version string. Since that constant was never bumped despite dozens
+ * of commits changing these exact files, every browser (and any
+ * server-side/CDN caching layer) kept serving the OLD cached file
+ * indefinitely under the URL "...ai-valuation.js?ver=1.0.0" - the
+ * server-side PHP logic was correctly updated on every deploy, but the
+ * JS/CSS that renders its results was not, because nothing ever told
+ * the browser the file had changed.
+ *
+ * Fix: this helper returns the asset file's own last-modified
+ * timestamp as its version, so EVERY future code change automatically
+ * busts the cache with zero manual steps - there is no version number
+ * to remember to bump ever again. Falls back to MOAVEZE_PLUS_VERSION
+ * only if the file can't be found (e.g. mid-deployment edge case).
+ *
+ * @param string $relative_path Path relative to the plugin root, e.g. 'assets/js/admin/ai-valuation.js'.
+ */
+function moaveze_asset_version($relative_path) {
+    $full_path = MOAVEZE_PLUS_PATH . $relative_path;
+    $mtime = @filemtime($full_path);
+    return $mtime ? (string) $mtime : MOAVEZE_PLUS_VERSION;
+}
+
+/**
  * Main Plugin Class
  */
 final class Moaveze_Plus {
@@ -184,7 +210,7 @@ final class Moaveze_Plus {
             'moaveze-plus-main',
             MOAVEZE_PLUS_URL . 'assets/css/frontend/main.css',
             array(),
-            MOAVEZE_PLUS_VERSION
+            moaveze_asset_version('assets/css/frontend/main.css')
         );
 
         // Form styles
@@ -192,7 +218,7 @@ final class Moaveze_Plus {
             'moaveze-plus-form',
             MOAVEZE_PLUS_URL . 'assets/css/frontend/form.css',
             array('moaveze-plus-main'),
-            MOAVEZE_PLUS_VERSION
+            moaveze_asset_version('assets/css/frontend/form.css')
         );
 
         // Map styles
@@ -200,7 +226,7 @@ final class Moaveze_Plus {
             'moaveze-plus-map',
             MOAVEZE_PLUS_URL . 'assets/css/frontend/map.css',
             array('moaveze-plus-main'),
-            MOAVEZE_PLUS_VERSION
+            moaveze_asset_version('assets/css/frontend/map.css')
         );
 
         // Leaflet Map
@@ -212,7 +238,7 @@ final class Moaveze_Plus {
             'moaveze-plus-main',
             MOAVEZE_PLUS_URL . 'assets/js/frontend/main.js',
             array('jquery', 'leaflet'),
-            MOAVEZE_PLUS_VERSION,
+            moaveze_asset_version('assets/js/frontend/main.js'),
             true
         );
 
@@ -221,7 +247,7 @@ final class Moaveze_Plus {
             'moaveze-plus-form',
             MOAVEZE_PLUS_URL . 'assets/js/frontend/form.js',
             array('jquery', 'moaveze-plus-main'),
-            MOAVEZE_PLUS_VERSION,
+            moaveze_asset_version('assets/js/frontend/form.js'),
             true
         );
 
@@ -230,7 +256,7 @@ final class Moaveze_Plus {
             'moaveze-plus-map',
             MOAVEZE_PLUS_URL . 'assets/js/frontend/map.js',
             array('jquery', 'leaflet', 'moaveze-plus-main'),
-            MOAVEZE_PLUS_VERSION,
+            moaveze_asset_version('assets/js/frontend/map.js'),
             true
         );
 
@@ -239,14 +265,14 @@ final class Moaveze_Plus {
             'moaveze-plus-offers',
             MOAVEZE_PLUS_URL . 'assets/css/frontend/offers.css',
             array('moaveze-plus-main'),
-            MOAVEZE_PLUS_VERSION
+            moaveze_asset_version('assets/css/frontend/offers.css')
         );
 
         wp_enqueue_script(
             'moaveze-plus-offers',
             MOAVEZE_PLUS_URL . 'assets/js/frontend/offers.js',
             array('jquery', 'moaveze-plus-main'),
-            MOAVEZE_PLUS_VERSION,
+            moaveze_asset_version('assets/js/frontend/offers.js'),
             true
         );
 
@@ -255,14 +281,14 @@ final class Moaveze_Plus {
             'moaveze-plus-single',
             MOAVEZE_PLUS_URL . 'assets/css/frontend/single.css',
             array('moaveze-plus-main'),
-            MOAVEZE_PLUS_VERSION
+            moaveze_asset_version('assets/css/frontend/single.css')
         );
 
         wp_enqueue_script(
             'moaveze-plus-single',
             MOAVEZE_PLUS_URL . 'assets/js/frontend/single.js',
             array('jquery', 'moaveze-plus-main'),
-            MOAVEZE_PLUS_VERSION,
+            moaveze_asset_version('assets/js/frontend/single.js'),
             true
         );
 
@@ -275,14 +301,14 @@ final class Moaveze_Plus {
                 'moaveze-plus-favorites',
                 MOAVEZE_PLUS_URL . 'assets/css/frontend/favorites.css',
                 array('moaveze-plus-main'),
-                MOAVEZE_PLUS_VERSION
+                moaveze_asset_version('assets/css/frontend/favorites.css')
             );
 
             wp_enqueue_script(
                 'moaveze-plus-favorites',
                 MOAVEZE_PLUS_URL . 'assets/js/frontend/favorites.js',
                 array('jquery', 'moaveze-plus-main'),
-                MOAVEZE_PLUS_VERSION,
+                moaveze_asset_version('assets/js/frontend/favorites.js'),
                 true
             );
         }
@@ -296,13 +322,13 @@ final class Moaveze_Plus {
                 'moaveze-plus-addons',
                 MOAVEZE_PLUS_URL . 'assets/css/frontend/addons.css',
                 array('moaveze-plus-main'),
-                MOAVEZE_PLUS_VERSION
+                moaveze_asset_version('assets/css/frontend/addons.css')
             );
             wp_enqueue_script(
                 'moaveze-plus-addons',
                 MOAVEZE_PLUS_URL . 'assets/js/frontend/addons.js',
                 array('jquery', 'moaveze-plus-main'),
-                MOAVEZE_PLUS_VERSION,
+                moaveze_asset_version('assets/js/frontend/addons.js'),
                 true
             );
             wp_localize_script('moaveze-plus-addons', 'moavezeAddons', array(
@@ -366,14 +392,14 @@ final class Moaveze_Plus {
             'moaveze-plus-admin',
             MOAVEZE_PLUS_URL . 'assets/css/admin/admin.css',
             array(),
-            MOAVEZE_PLUS_VERSION
+            moaveze_asset_version('assets/css/admin/admin.css')
         );
 
         wp_enqueue_script(
             'moaveze-plus-admin',
             MOAVEZE_PLUS_URL . 'assets/js/admin/admin.js',
             array('jquery', 'wp-color-picker'),
-            MOAVEZE_PLUS_VERSION,
+            moaveze_asset_version('assets/js/admin/admin.js'),
             true
         );
 
@@ -386,7 +412,7 @@ final class Moaveze_Plus {
             'moaveze-plus-ai-valuation',
             MOAVEZE_PLUS_URL . 'assets/js/admin/ai-valuation.js',
             array('jquery'),
-            MOAVEZE_PLUS_VERSION,
+            moaveze_asset_version('assets/js/admin/ai-valuation.js'),
             true
         );
 
