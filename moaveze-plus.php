@@ -27,7 +27,7 @@ if (!defined('ABSPATH')) {
 // needs to be bumped on every change just to force a cache refresh.
 // It should still be bumped for real releases so admins can see at a
 // glance that the plugin was updated (Plugins list, changelog, etc).
-define('MOAVEZE_PLUS_VERSION', '1.6.0');
+define('MOAVEZE_PLUS_VERSION', '1.6.1');
 define('MOAVEZE_PLUS_FILE', __FILE__);
 define('MOAVEZE_PLUS_PATH', plugin_dir_path(__FILE__));
 define('MOAVEZE_PLUS_URL', plugin_dir_url(__FILE__));
