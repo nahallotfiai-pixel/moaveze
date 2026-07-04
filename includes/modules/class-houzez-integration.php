@@ -15,16 +15,13 @@ class Moaveze_Houzez_Integration {
         if (!$this->is_houzez_active()) return;
 
         add_action('wp_ajax_moaveze_import_from_houzez', array($this, 'import_from_houzez'));
+        add_action('wp_ajax_moaveze_convert_to_exchange', array($this, 'ajax_convert_to_exchange'));
         add_filter('the_content', array($this, 'add_exchange_badge_to_content'), 20);
         add_action('houzez_after_property_title', array($this, 'show_exchange_badge'));
         add_filter('manage_property_posts_columns', array($this, 'add_exchange_column'));
         add_action('manage_property_posts_custom_column', array($this, 'exchange_column_content'), 10, 2);
 
-        // NEW: "Send to Exchange" meta box directly on the single Houzez
-        // property edit screen. Previously the ONLY way to link a property
-        // to the exchange system was the small button in the admin LIST
-        // column - there was no way to do it from inside the property's
-        // own edit screen at all.
+        // "تبدیل به آگهی معاوضه" meta box on Houzez property edit screen
         add_action('add_meta_boxes', array($this, 'add_send_to_exchange_metabox'));
     }
 
@@ -80,6 +77,45 @@ class Moaveze_Houzez_Integration {
             strpos(strtolower($theme->get('Name')), 'houzez') !== false ||
             strpos(strtolower($theme->get('Template')), 'houzez') !== false
         );
+    }
+
+    /**
+     * AJAX: "تبدیل به آگهی معاوضه" button clicked on a Houzez property
+     * edit screen - creates a full moaveze_exchange post from the
+     * property's data (price, area, rooms, year, floor, features,
+     * gallery, location) and links the two posts together.
+     */
+    public function ajax_convert_to_exchange() {
+        check_ajax_referer('moaveze_admin_nonce', 'nonce');
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('دسترسی ندارید');
+        }
+
+        $property_id = absint($_POST['property_id'] ?? 0);
+        if (!$property_id || get_post_type($property_id) !== 'property') {
+            wp_send_json_error('شناسه ملک نامعتبر است');
+        }
+
+        // Check if already converted
+        $existing_exchange_id = get_post_meta($property_id, '_moaveze_exchange_linked', true);
+        if ($existing_exchange_id && get_post($existing_exchange_id)) {
+            wp_send_json_error(array(
+                'message'  => 'این ملک قبلاً به سیستم معاوضه تبدیل شده است',
+                'edit_url' => get_edit_post_link($existing_exchange_id, 'raw'),
+            ));
+        }
+
+        $result = $this->import_single_property($property_id);
+        if (!$result) {
+            wp_send_json_error('خطا در تبدیل ملک');
+        }
+
+        $exchange_id = get_post_meta($property_id, '_moaveze_exchange_linked', true);
+        wp_send_json_success(array(
+            'message'  => 'ملک با موفقیت به آگهی معاوضه تبدیل شد',
+            'edit_url' => get_edit_post_link($exchange_id, 'raw'),
+            'view_url' => get_permalink($exchange_id),
+        ));
     }
 
     /**
@@ -177,8 +213,103 @@ class Moaveze_Houzez_Integration {
         update_post_meta($exchange_id, '_moaveze_houzez_source_id', $property_id);
         update_post_meta($exchange_id, '_moaveze_verified', '1');
 
+        // Year built (Houzez meta key: fave_property_year)
+        $year_built = get_post_meta($property_id, 'fave_property_year', true);
+        if ($year_built) {
+            update_post_meta($exchange_id, '_moaveze_year_built', sanitize_text_field($year_built));
+        }
+
+        // Floor (Houzez custom field - stored as "X از Y")
+        $floor_raw = get_post_meta($property_id, 'fave_f5eb6c866568d9', true);
+        if ($floor_raw) {
+            // Try to parse "X از Y" format
+            if (preg_match('/(\d+)\s*از\s*(\d+)/u', $floor_raw, $m)) {
+                update_post_meta($exchange_id, '_moaveze_floor', $m[1]);
+                update_post_meta($exchange_id, '_moaveze_total_floors', $m[2]);
+            } else {
+                update_post_meta($exchange_id, '_moaveze_floor', sanitize_text_field($floor_raw));
+            }
+        }
+
+        // Features: map Houzez property_feature taxonomy terms to
+        // moaveze_feature taxonomy (creating terms if they don't exist)
+        $houzez_features = get_the_terms($property_id, 'property_feature');
+        if ($houzez_features && !is_wp_error($houzez_features)) {
+            $feature_names = wp_list_pluck($houzez_features, 'name');
+            foreach ($feature_names as $fname) {
+                // Find or create the equivalent moaveze_feature term
+                $existing = get_term_by('name', $fname, 'moaveze_feature');
+                if (!$existing) {
+                    wp_insert_term($fname, 'moaveze_feature');
+                }
+            }
+            wp_set_object_terms($exchange_id, $feature_names, 'moaveze_feature');
+        }
+
+        // Gallery images (copy Houzez gallery attachment IDs)
+        $gallery_ids = get_post_meta($property_id, 'fave_property_images', false);
+        if (!empty($gallery_ids)) {
+            update_post_meta($exchange_id, '_moaveze_gallery', $gallery_ids);
+        }
+
+        // Map Houzez property_type → moaveze_property_type
+        $houzez_type = get_the_terms($property_id, 'property_type');
+        if ($houzez_type && !is_wp_error($houzez_type)) {
+            $type_name = $houzez_type[0]->name;
+            $moaveze_type = get_term_by('name', $type_name, 'moaveze_property_type');
+            if (!$moaveze_type) {
+                $inserted = wp_insert_term($type_name, 'moaveze_property_type');
+                if (!is_wp_error($inserted)) {
+                    $moaveze_type = get_term($inserted['term_id'], 'moaveze_property_type');
+                }
+            }
+            if ($moaveze_type) {
+                wp_set_object_terms($exchange_id, array($moaveze_type->term_id), 'moaveze_property_type');
+            }
+        }
+
+        // Map Houzez property_area → moaveze_district
+        $houzez_area = get_the_terms($property_id, 'property_area');
+        if ($houzez_area && !is_wp_error($houzez_area)) {
+            $area_name = $houzez_area[0]->name;
+            $moaveze_district = get_term_by('name', $area_name, 'moaveze_district');
+            if (!$moaveze_district) {
+                $inserted = wp_insert_term($area_name, 'moaveze_district');
+                if (!is_wp_error($inserted)) {
+                    $moaveze_district = get_term($inserted['term_id'], 'moaveze_district');
+                }
+            }
+            if ($moaveze_district) {
+                wp_set_object_terms($exchange_id, array($moaveze_district->term_id), 'moaveze_district');
+            }
+        }
+
         // Link back
         update_post_meta($property_id, '_moaveze_exchange_linked', $exchange_id);
+
+        // Insert into moaveze_exchanges table so the matching algorithm
+        // can find and compare this listing with others.
+        global $wpdb;
+        $type_name = '';
+        if ($houzez_type && !is_wp_error($houzez_type)) $type_name = $houzez_type[0]->name;
+        $district_name = '';
+        if ($houzez_area && !is_wp_error($houzez_area)) $district_name = $houzez_area[0]->name;
+
+        $wpdb->insert(
+            $wpdb->prefix . 'moaveze_exchanges',
+            array(
+                'post_id'        => $exchange_id,
+                'user_id'        => $property->post_author,
+                'property_type'  => $type_name,
+                'property_value' => absint($price),
+                'area_sqm'       => absint($size),
+                'rooms'          => absint($rooms),
+                'exchange_type'  => 'flexible',
+                'district'       => $district_name,
+                'status'         => 'active',
+                'verified'       => 1,
+            )
+        );
 
         return true;
     }

@@ -16,6 +16,46 @@
             this.initConnectPartiesModal();
             this.initInstantFeatureToggle();
             this.initAISuggestions();
+            this.initConvertToExchange();
+        },
+
+        /**
+         * "تبدیل به آگهی معاوضه" button on Houzez property edit
+         * screens - calls ajax_convert_to_exchange to create a full
+         * moaveze_exchange post from the property's data.
+         */
+        initConvertToExchange() {
+            $(document).on('click', '.moaveze-send-to-exchange-btn', function() {
+                const $btn = $(this);
+                const propertyId = $btn.data('property-id');
+
+                if (!confirm('آیا این ملک به آگهی معاوضه تبدیل شود؟ (تمام مشخصات، تصاویر و موقعیت ملک کپی خواهد شد)')) return;
+
+                $btn.prop('disabled', true).text('در حال تبدیل...');
+
+                $.post(moavezeAdmin.ajaxUrl, {
+                    action: 'moaveze_convert_to_exchange',
+                    nonce: moavezeAdmin.nonce,
+                    property_id: propertyId,
+                }, function(response) {
+                    if (response.success) {
+                        $btn.replaceWith(`
+                            <p class="status-linked" style="color:#16a34a;font-weight:600;">
+                                <span class="dashicons dashicons-yes-alt"></span> ${response.data.message}
+                            </p>
+                            <a href="${response.data.edit_url}" class="button button-small" target="_blank">ویرایش آگهی معاوضه</a>
+                            <a href="${response.data.view_url}" class="button button-small" target="_blank">مشاهده</a>
+                        `);
+                    } else {
+                        const msg = (response.data && response.data.message) || response.data || 'خطا';
+                        alert(msg);
+                        $btn.prop('disabled', false).html('<span class="dashicons dashicons-randomize"></span> ارسال به معاوضه');
+                    }
+                }).fail(function() {
+                    alert('خطا در ارتباط با سرور');
+                    $btn.prop('disabled', false).html('<span class="dashicons dashicons-randomize"></span> ارسال به معاوضه');
+                });
+            });
         },
 
         /**
