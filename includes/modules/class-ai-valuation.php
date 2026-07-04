@@ -173,16 +173,9 @@ class Moaveze_AI_Valuation {
         if (!$v) wp_send_json_error('ارزش‌گذاری یافت نشد');
 
         $comparables_data = json_decode($v->comparables ?: '{}', true);
-        $comparables = array();
-        if (!empty($comparables_data['items']) && is_array($comparables_data['items'])) {
-            foreach ($comparables_data['items'] as $c) {
-                $comparables[] = array(
-                    'description'        => $c['description'] ?? '',
-                    'price_total_short'   => !empty($c['price_total']) ? Moaveze_Helpers::short_price($c['price_total']) : null,
-                    'price_per_sqm_short' => !empty($c['price_per_sqm']) ? Moaveze_Helpers::short_price($c['price_per_sqm']) : null,
-                );
-            }
-        }
+        $comparables = !empty($comparables_data['items']) && is_array($comparables_data['items'])
+            ? $this->format_comparables_for_display($comparables_data['items'])
+            : array();
 
         $providers = self::get_providers();
 
@@ -195,6 +188,7 @@ class Moaveze_AI_Valuation {
             'price_per_sqm_short' => !empty($comparables_data['price_per_sqm']) ? Moaveze_Helpers::short_price($comparables_data['price_per_sqm']) : null,
             'confidence'          => $v->confidence,
             'reasoning'           => $v->reasoning ?: $v->manual_notes,
+            'grounded'            => !empty($comparables_data['grounded']),
             'comparables'         => $comparables,
             'status'              => $v->status,
             'date'                => Moaveze_Helpers::jalali_date($v->created_at, 'Y/m/d H:i'),
@@ -575,6 +569,15 @@ class Moaveze_AI_Valuation {
         register_setting('moaveze_ai', 'moaveze_ai_worker_enabled');
         register_setting('moaveze_ai', 'moaveze_ai_worker_url');
         register_setting('moaveze_ai', 'moaveze_ai_worker_secret');
+
+        // Real web-search grounding (currently supported for Gemini
+        // only, via Google's native "Grounding with Google Search"
+        // tool - see call_gemini()) - lets the AI actually search the
+        // live web for comparable listings instead of relying purely on
+        // its training-data knowledge, so every comparable example can
+        // cite a real, clickable, verifiable source URL rather than a
+        // plausible-sounding but fabricated one.
+        register_setting('moaveze_ai', 'moaveze_ai_grounding_enabled');
     }
 
     /**
@@ -688,8 +691,18 @@ class Moaveze_AI_Valuation {
                 <?php else : ?>
                     <p class="description">
                         هوش مصنوعی (<?php echo esc_html($providers[$active_provider]['label'] ?? $active_provider); ?>) با توجه به منطقه،
-                        متراژ، سال ساخت، امکانات و دانش خود از بازار مسکن تبریز، ارزش پیشنهادی ارائه می‌دهد.
+                        متراژ، سال ساخت، امکانات، مختصات جغرافیایی و دانش خود از بازار مسکن تبریز، ارزش پیشنهادی ارائه می‌دهد.
                     </p>
+                    <?php if ($this->is_grounding_active()) : ?>
+                        <p class="description" style="color:#065f46;background:#d1fae5;padding:8px 12px;border-radius:8px;">
+                            🔍 جست‌وجوی واقعی وب فعال است - هوش مصنوعی آگهی‌های واقعی مشابه (از جمله دیوار) را جست‌وجو می‌کند و لینک واقعی هر مورد را ارائه می‌دهد.
+                        </p>
+                    <?php else : ?>
+                        <p class="description" style="color:#92400e;background:#fef3c7;padding:8px 12px;border-radius:8px;">
+                            📚 جست‌وجوی وب غیرفعال است - نمونه‌های مشابه صرفاً بر اساس دانش قبلی مدل خواهند بود و لینک واقعی نخواهند داشت.
+                            برای فعال‌سازی به <a href="<?php echo admin_url('admin.php?page=moaveze-settings&tab=ai'); ?>">تنظیمات &gt; هوش مصنوعی</a> بروید (فقط با Gemini و بدون رله Cloudflare Worker کار می‌کند).
+                        </p>
+                    <?php endif; ?>
                     <button type="button" class="button button-primary valuation-run-ai-btn">
                         <span class="dashicons dashicons-superhero-alt"></span> دریافت پیشنهاد هوش مصنوعی
                     </button>
@@ -879,6 +892,8 @@ class Moaveze_AI_Valuation {
         }
 
         $parsed = $this->parse_valuation_response($result['text']);
+        $parsed['comparables'] = $this->verify_comparable_urls($parsed['comparables'], $result['grounded_urls'] ?? array());
+        $parsed['grounded'] = $this->is_grounding_active();
 
         $wpdb->insert($wpdb->prefix . 'moaveze_valuations', array(
             'exchange_id'      => $exchange_id,
@@ -892,6 +907,7 @@ class Moaveze_AI_Valuation {
             'reasoning'        => $parsed['methodology'] ? ($parsed['methodology'] . "\n\n" . $parsed['reasoning']) : $parsed['reasoning'],
             'comparables'      => wp_json_encode(array(
                 'price_per_sqm' => $parsed['price_per_sqm'],
+                'grounded'      => $parsed['grounded'],
                 'items'         => $parsed['comparables'],
             )),
             'raw_response'     => $result['text'],
@@ -909,15 +925,28 @@ class Moaveze_AI_Valuation {
             'confidence'    => $parsed['confidence'],
             'methodology'   => $parsed['methodology'],
             'reasoning'     => $parsed['reasoning'],
-            'comparables'   => array_map(function ($c) {
-                return array(
-                    'description'         => $c['description'],
-                    'price_total_short'    => $c['price_total'] ? Moaveze_Helpers::short_price($c['price_total']) : null,
-                    'price_per_sqm_short'  => $c['price_per_sqm'] ? Moaveze_Helpers::short_price($c['price_per_sqm']) : null,
-                );
-            }, $parsed['comparables']),
+            'grounded'      => $parsed['grounded'],
+            'comparables'   => $this->format_comparables_for_display($parsed['comparables']),
             'provider'      => self::get_providers()[$provider]['label'] ?? $provider,
         ));
+    }
+
+    /**
+     * Shape a comparables array (description/price_total/price_per_sqm/
+     * source_url/url_status) for the AJAX JSON response - shared
+     * between the "just ran AI" and "viewing past history" code paths
+     * so both always render identically.
+     */
+    private function format_comparables_for_display($comparables) {
+        return array_map(function ($c) {
+            return array(
+                'description'        => $c['description'],
+                'price_total_short'   => $c['price_total'] ? Moaveze_Helpers::short_price($c['price_total']) : null,
+                'price_per_sqm_short' => $c['price_per_sqm'] ? Moaveze_Helpers::short_price($c['price_per_sqm']) : null,
+                'source_url'          => $c['source_url'] ?? '',
+                'url_status'          => $c['url_status'] ?? 'none',
+            );
+        }, $comparables);
     }
 
     /**
@@ -974,16 +1003,27 @@ class Moaveze_AI_Valuation {
         $floor = get_post_meta($exchange->post_id, '_moaveze_floor', true);
         $total_floors = get_post_meta($exchange->post_id, '_moaveze_total_floors', true);
         $address = get_post_meta($exchange->post_id, '_moaveze_address', true);
+        // Real geo-coordinates saved on the listing (map picker /
+        // Houzez import) - per explicit user request ("موقعیت
+        // جغرافیایی ثبت شده در آگهی هم در قیمت گذاری قید شود"), these
+        // are now included so the AI can reason about the EXACT
+        // micro-location within the district, not just the district
+        // name, and (when grounding is enabled) search near these
+        // coordinates specifically.
+        $lat = get_post_meta($exchange->post_id, '_moaveze_latitude', true);
+        $lng = get_post_meta($exchange->post_id, '_moaveze_longitude', true);
         $area = (int) $exchange->area_sqm;
         $owner_value = (int) $exchange->property_value;
         $owner_price_per_sqm = $area > 0 ? round($owner_value / $area) : 0;
         $current_year_jalali = Moaveze_Helpers::jalali_date(current_time('mysql'), 'Y');
         $building_age = ($year_built && $current_year_jalali) ? max(0, (int) $current_year_jalali - (int) $year_built) : null;
+        $grounding_active = $this->is_grounding_active();
 
         $details = array(
             'شهر'                       => 'تبریز',
             'منطقه/محله'                => $resolved['district'],
             'آدرس تقریبی'               => $address ?: 'ثبت نشده',
+            'مختصات جغرافیایی دقیق (Lat, Lng)' => ($lat && $lng) ? "{$lat}, {$lng}" : 'ثبت نشده',
             'نوع ملک'                   => $resolved['property_type'],
             'متراژ زیربنا'              => $area . ' متر مربع',
             'تعداد اتاق خواب'           => $rooms ?: 'نامشخص',
@@ -1000,11 +1040,38 @@ class Moaveze_AI_Valuation {
             $details_text .= "- {$label}: {$value}\n";
         }
 
+        // Two very different instruction sets depending on whether real
+        // web search (grounding) is actually available for this call:
+        //   - GROUNDED: the model can genuinely search the live web
+        //     (e.g. Divar), so we REQUIRE a real, working source_url for
+        //     every comparable, and explicitly forbid fabricating one.
+        //   - NOT GROUNDED: the model can only draw on its training
+        //     data, so we REQUIRE it to be explicit that comparables are
+        //     illustrative estimates with NO real source_url, rather
+        //     than letting it invent a plausible-looking but fake link
+        //     (per explicit user request: "باید دقیقا استناد کنه به
+        //     لینک اونم ... تا ما بفهمیم واقعا استناد میکنه یا نه").
+        $location_instruction = ($lat && $lng)
+            ? "با استفاده از مختصات جغرافیایی دقیق ملک (بالا)، موقعیت ریز آن را نسبت به خیابان‌های اصلی، مراکز خرید، و کیفیت محل در نظر بگیر - نه فقط نام کلی منطقه."
+            : "مختصات دقیق ثبت نشده؛ فقط بر اساس نام منطقه/محله تخمین بزن و این محدودیت را در reasoning ذکر کن.";
+
+        if ($grounding_active) {
+            $comparable_instruction = <<<TXT
+۴. با استفاده از ابزار جست‌وجوی وب که در اختیار داری، آگهی‌های واقعی و در حال حاضر منتشرشده (مخصوصاً در دیوار - divar.ir - و در صورت امکان شیپور) برای ملک‌های مشابه نزدیک به همین منطقه/مختصات را واقعاً جست‌وجو و پیدا کن.
+۵. برای هر نمونه مشابهی که ارائه می‌دهی، حتماً و بدون استثنا لینک واقعی و کامل آن آگهی (source_url) را هم بده - این لینک باید از نتایج جست‌وجوی واقعی تو باشد، نه یک لینک ساختگی یا تخمینی. اگر برای یک مورد نتوانستی لینک واقعی پیدا کنی، آن مورد را در پاسخ نگذار.
+۶. اگر بعد از جست‌وجو هیچ نمونه واقعی مرتبطی پیدا نکردی، آرایه comparables را خالی برگردان و این موضوع را صادقانه در reasoning بگو - هرگز نمونه ساختگی با لینک تقلبی نساز.
+TXT;
+        } else {
+            $comparable_instruction = <<<TXT
+۴. چون قابلیت جست‌وجوی زنده وب برای این درخواست فعال نیست، حداقل ۲ الی ۳ نمونه مشابه بر اساس دانش کلی‌ات از بازار تبریز ارائه بده، اما این نمونه‌ها را با source_url خالی (رشته خالی "") برگردان - به هیچ عنوان لینک ساختگی یا تخمینی برای source_url نساز، چون کارشناس باید بتواند تشخیص دهد کدام موارد واقعاً منبع قابل‌بررسی دارند و کدام صرفاً مثال‌های احتمالی هستند.
+TXT;
+        }
+
         return <<<PROMPT
-تو یک کارشناس رسمی و باتجربه ارزیابی املاک و مستغلات (کارشناس کانون ارزیابان) در شهر تبریز، ایران هستی. روش کار تو کاملاً فنی، حرفه‌ای و مبتنی بر داده است - نه یک تخمین سطحی. با قیمت‌های واقعی بازار مسکن تبریز (از جمله آگهی‌های مشابه در سایت‌های نیازمندی مثل دیوار و شیپور) و روند قیمت هر منطقه کاملاً آشنایی داری.
+تو یک کارشناس رسمی و باتجربه ارزیابی املاک و مستغلات (کارشناس کانون ارزیابان) در شهر تبریز، ایران هستی. روش کار تو کاملاً فنی، حرفه‌ای و مبتنی بر داده است - نه یک تخمین سطحی. با قیمت‌های واقعی بازار مسکن تبریز و روند قیمت هر منطقه کاملاً آشنایی داری.
 
 روش ارزیابی که باید دنبال کنی (رویکرد مقایسه‌ای/Sales Comparison Approach):
-۱. ابتدا میانگین قیمت هر متر مربع را برای «همین منطقه» و «همین نوع ملک» بر اساس دانش خودت از بازار تخمین بزن.
+۱. ابتدا میانگین قیمت هر متر مربع را برای «همین منطقه» و «همین نوع ملک» تخمین بزن. {$location_instruction}
 ۲. سپس با توجه به عوامل تعدیل‌کننده (Adjustment Factors) زیر، این قیمت پایه هر متر را برای این ملک خاص تعدیل کن:
    - سال ساخت / قدمت بنا (بنای نوساز معمولاً ۱۰ تا ۲۵ درصد نسبت به بنای قدیمی‌تر در همان منطقه صرافه بیشتری دارد)
    - طبقه و تعداد کل طبقات (طبقات میانی معمولاً ارزش بالاتری نسبت به همکف یا طبقه آخر بدون آسانسور دارند)
@@ -1012,8 +1079,8 @@ class Moaveze_AI_Valuation {
    - متراژ (واحدهای بسیار کوچک یا بسیار بزرگ نسبت به میانگین منطقه معمولاً قیمت هر متر متفاوتی دارند)
    - موقعیت دقیق در منطقه (نزدیکی به خیابان اصلی، امکانات رفاهی، حمل‌ونقل عمومی)
 ۳. حاصل‌ضرب قیمت پایه تعدیل‌شده هر متر در متراژ را به‌عنوان ارزش نهایی محاسبه کن.
-۴. حداقل ۲ الی ۳ نمونه معامله یا آگهی مشابه فرضی (اما واقع‌گرایانه و نزدیک به وضعیت واقعی بازار) از همین منطقه یا مناطق مشابه تبریز ارائه بده تا کارشناس بتواند ارزیابی تو را با موارد مشابه راستی‌آزمایی کند.
-۵. اگر منطقه یا نوع ملک نامشخص بود، این را در بخش reasoning صریحاً بگو و سطح اطمینان (confidence) را متناسب با آن پایین‌تر تنظیم کن؛ در غیر این صورت (وقتی منطقه و نوع ملک مشخص است) از عبارات کلی و مبهم مثل "عدم قطعیت بالا" خودداری کن و مستقیماً بر اساس داده‌های داده‌شده تحلیل کن.
+{$comparable_instruction}
+۷. اگر منطقه یا نوع ملک نامشخص بود، این را در بخش reasoning صریحاً بگو و سطح اطمینان (confidence) را متناسب با آن پایین‌تر تنظیم کن؛ در غیر این صورت از عبارات کلی و مبهم مثل "عدم قطعیت بالا" خودداری کن و مستقیماً بر اساس داده‌های داده‌شده تحلیل کن.
 
 مشخصات کامل ملک:
 {$details_text}
@@ -1029,11 +1096,30 @@ class Moaveze_AI_Valuation {
   "methodology_summary": "<۲-۳ جمله فارسی: قیمت پایه هر متر منطقه که فرض کردی + مهم‌ترین عوامل تعدیل‌کننده که اعمال کردی و جهت هرکدام (مثبت/منفی)>",
   "reasoning": "<تحلیل فنی و مبتنی بر داده، حداکثر ۵-۶ جمله فارسی، درباره دلیل این ارزش‌گذاری، مقایسه با قیمت ادعایی مالک، و هرگونه ریسک یا نقطه ضعف در داده‌های موجود>",
   "comparables": [
-    {"description": "<توضیح کوتاه نمونه مشابه اول: منطقه، متراژ، سال ساخت>", "price_total": <عدد تومان>, "price_per_sqm": <عدد تومان>},
-    {"description": "<توضیح کوتاه نمونه مشابه دوم>", "price_total": <عدد تومان>, "price_per_sqm": <عدد تومان>}
+    {"description": "<توضیح کوتاه نمونه مشابه اول: منطقه، متراژ، سال ساخت>", "price_total": <عدد تومان>, "price_per_sqm": <عدد تومان>, "source_url": "<لینک کامل و واقعی آگهی منبع، یا رشته خالی اگر واقعی نیست>"}
   ]
 }
 PROMPT;
+    }
+
+    /**
+     * Is real web-search grounding actually going to be used for the
+     * NEXT AI call? True only when the admin has enabled it AND the
+     * currently-active provider is Gemini (the only provider this
+     * plugin currently wires up Google's native Search-grounding tool
+     * for - see call_gemini()). Used both to select which prompt
+     * instructions to send and to accurately label the result as
+     * "واقعاً جست‌وجوشده" vs "صرفاً بر اساس دانش قبلی مدل" so the
+     * consultant is never misled about whether a link is real.
+     */
+    private function is_grounding_active() {
+        if (get_option('moaveze_ai_grounding_enabled') !== 'yes') return false;
+        // Grounding is only wired up for the direct Gemini call path;
+        // if the Cloudflare Worker relay is active, we can't guarantee
+        // the tool is forwarded correctly, so treat it as unavailable.
+        if (get_option('moaveze_ai_worker_enabled') === 'yes') return false;
+        $provider = get_option('moaveze_ai_active_provider', 'gemini');
+        return $provider === 'gemini';
     }
 
     /**
@@ -1058,10 +1144,16 @@ PROMPT;
         if (!empty($data['comparables']) && is_array($data['comparables'])) {
             foreach ($data['comparables'] as $c) {
                 if (!is_array($c)) continue;
+                $raw_url = trim($c['source_url'] ?? '');
                 $comparables_structured[] = array(
                     'description'   => $c['description'] ?? '',
                     'price_total'   => isset($c['price_total']) ? absint($c['price_total']) : null,
                     'price_per_sqm' => isset($c['price_per_sqm']) ? absint($c['price_per_sqm']) : null,
+                    // Only kept if it's a real, well-formed URL - see
+                    // verify_comparable_urls() below, which additionally
+                    // cross-checks each URL against Google's own
+                    // grounding-verified list before trusting it.
+                    'source_url'    => filter_var($raw_url, FILTER_VALIDATE_URL) ? $raw_url : '',
                 );
             }
         }
@@ -1074,12 +1166,52 @@ PROMPT;
             'max'           => isset($data['max_value']) ? absint($data['max_value']) : null,
             'confidence'    => $data['confidence'] ?? 'نامشخص',
             'reasoning'     => $data['reasoning'] ?? mb_substr($text, 0, 500),
-            // Structured array of {description, price_total, price_per_sqm}
-            // (previously a single free-text "comparable_notes" string) -
-            // stored as-is (json-encoded) in the DB `comparables` column
-            // and rendered as a real mini-table in the metabox/history.
+            // Structured array of {description, price_total, price_per_sqm,
+            // source_url} (previously a single free-text
+            // "comparable_notes" string with no links at all) - stored
+            // as-is (json-encoded) in the DB `comparables` column and
+            // rendered as a real mini-table with clickable links in the
+            // metabox/history.
             'comparables'   => $comparables_structured,
         );
+    }
+
+    /**
+     * Cross-check every comparable's self-reported source_url against
+     * the list of URLs Google's grounding tool actually confirms were
+     * retrieved for this answer (see call_gemini() docblock). This
+     * exists because a language model can still WRITE a plausible-
+     * looking URL in its JSON output even when asked not to fabricate
+     * one - the model's own text output is not proof it actually
+     * visited that page. Only a URL that also appears in the
+     * independently-returned groundingMetadata is labeled "verified"
+     * (✓ لینک تأییدشده توسط جست‌وجوی گوگل); anything else is downgraded
+     * to "ادعا شده - تأیید نشده" so the consultant can tell the
+     * difference at a glance, per the explicit user request to be able
+     * to tell "آیا واقعا استناد میکنه یا نه".
+     */
+    private function verify_comparable_urls($comparables, $grounded_urls) {
+        // Normalize both sides (strip protocol/www/trailing slash) for a
+        // resilient-but-still-meaningful comparison, since the model's
+        // quoted URL and Google's grounding-chunk URL can differ in
+        // trivial formatting while pointing at the same real page.
+        $normalize = function ($url) {
+            $url = preg_replace('#^https?://(www\.)?#i', '', trim($url));
+            return rtrim($url, '/');
+        };
+        $normalized_grounded = array_map($normalize, $grounded_urls);
+
+        foreach ($comparables as &$c) {
+            if (empty($c['source_url'])) {
+                $c['url_status'] = 'none';
+                continue;
+            }
+            $c['url_status'] = in_array($normalize($c['source_url']), $normalized_grounded, true)
+                ? 'verified'
+                : 'unverified';
+        }
+
+        return $comparables;
     }
 
 
@@ -1118,7 +1250,7 @@ PROMPT;
 
         switch ($provider) {
             case 'gemini':
-                return $this->call_gemini($url, $model, $api_key, $prompt);
+                return $this->call_gemini($url, $model, $api_key, $prompt, $this->is_grounding_active());
             case 'cloudflare_ai':
                 return $this->call_cloudflare_ai($url, $model, $api_key, $prompt);
             default: // chatgpt, hermes, zai, custom - all OpenAI-compatible
@@ -1150,18 +1282,36 @@ PROMPT;
     }
 
     /**
-     * Google Gemini (generateContent API)
+     * Google Gemini (generateContent API).
+     *
+     * When $use_grounding is true, this enables Google's native
+     * "Grounding with Google Search" tool (the `tools: [{google_search:
+     * {}}]` parameter documented at
+     * https://ai.google.dev/gemini-api/docs/grounding) so the model
+     * genuinely searches the live web (including real estate listing
+     * sites like Divar) before answering, instead of only drawing on
+     * its static training data. The API additionally returns
+     * `groundingMetadata.groundingChunks[].web.uri` - the REAL source
+     * URLs it actually used - which we extract and pass back alongside
+     * the answer text so the calling code can cross-check the model's
+     * self-reported comparable links against a list of URLs Google
+     * confirms were genuinely retrieved for this specific answer.
      */
-    private function call_gemini($url, $model, $api_key, $prompt) {
+    private function call_gemini($url, $model, $api_key, $prompt, $use_grounding = false) {
         $endpoint = str_replace(array('{model}', '{api_key}'), array($model, $api_key), $url);
+
+        $request_body = array(
+            'contents' => array(
+                array('parts' => array(array('text' => $prompt))),
+            ),
+        );
+        if ($use_grounding) {
+            $request_body['tools'] = array(array('google_search' => new stdClass()));
+        }
 
         $response = wp_remote_post($endpoint, $this->http_args(array(
             'headers' => array('Content-Type' => 'application/json'),
-            'body'    => wp_json_encode(array(
-                'contents' => array(
-                    array('parts' => array(array('text' => $prompt))),
-                ),
-            )),
+            'body'    => wp_json_encode($request_body),
         )));
 
         if (is_wp_error($response)) {
@@ -1169,13 +1319,24 @@ PROMPT;
         }
 
         $body = json_decode(wp_remote_retrieve_body($response), true);
-        $text = $body['candidates'][0]['content']['parts'][0]['text'] ?? null;
+        $candidate = $body['candidates'][0] ?? array();
+        $text = $candidate['content']['parts'][0]['text'] ?? null;
 
         if (!$text) {
             return array('success' => false, 'text' => '', 'error' => $body['error']['message'] ?? 'پاسخ نامعتبر از Gemini');
         }
 
-        return array('success' => true, 'text' => $text, 'error' => '');
+        // Extract the REAL, Google-verified URLs actually used for this
+        // grounded answer (if any) - see docblock above.
+        $grounded_urls = array();
+        $chunks = $candidate['groundingMetadata']['groundingChunks'] ?? array();
+        foreach ($chunks as $chunk) {
+            if (!empty($chunk['web']['uri'])) {
+                $grounded_urls[] = $chunk['web']['uri'];
+            }
+        }
+
+        return array('success' => true, 'text' => $text, 'error' => '', 'grounded_urls' => $grounded_urls);
     }
 
     /**

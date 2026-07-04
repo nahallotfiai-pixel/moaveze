@@ -500,6 +500,19 @@ class Moaveze_Settings {
                     <p class="description">فقط یک ارائه‌دهنده در هر لحظه فعال است؛ برای تعویض کافیست ارائه‌دهنده دیگری فعال کنید (بدون نیاز به حذف تنظیمات قبلی)</p>
                 </td>
             </tr>
+            <tr>
+                <th><label for="moaveze_ai_grounding_enabled">جست‌وجوی واقعی وب (Grounding)</label></th>
+                <td>
+                    <label class="moaveze-switch">
+                        <input type="checkbox" id="moaveze_ai_grounding_enabled" name="moaveze_ai_grounding_enabled" value="yes" <?php checked(get_option('moaveze_ai_grounding_enabled'), 'yes'); ?>>
+                        <span class="moaveze-slider"></span>
+                    </label>
+                    <p class="description">
+                        در صورت فعال بودن (فقط برای Google Gemini قابل استفاده است)، هوش مصنوعی به‌صورت واقعی در وب جست‌وجو می‌کند (از جمله آگهی‌های مشابه در دیوار و سایت‌های دیگر) و برای هر مورد مشابه، لینک واقعی و قابل بررسی منبع را هم ارائه می‌دهد - نه فقط یک مثال احتمالی بر اساس دانش قبلی مدل.
+                        اگر غیرفعال باشد یا ارائه‌دهنده فعال Gemini نباشد، موارد مشابه صرفاً بر اساس دانش کلی مدل هستند و لینک واقعی ندارند (این به‌وضوح در نتیجه نمایش داده می‌شود).
+                    </p>
+                </td>
+            </tr>
         </table>
 
         <h3 style="margin-top:24px;">ارائه‌دهندگان هوش مصنوعی</h3>

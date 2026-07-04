@@ -272,25 +272,46 @@
             }
             let comparablesHtml = '';
             if (d.comparables && d.comparables.length) {
-                const rows = d.comparables.map((c) => `
-                    <tr>
-                        <td>${c.description || '—'}</td>
-                        <td>${c.price_total_short || '—'}</td>
-                        <td>${c.price_per_sqm_short || '—'}</td>
-                    </tr>
-                `).join('');
+                const rows = d.comparables.map((c) => {
+                    let linkCell = '<span class="var-no-link">بدون لینک (صرفاً مثال احتمالی)</span>';
+                    if (c.source_url) {
+                        if (c.url_status === 'verified') {
+                            linkCell = `<a href="${c.source_url}" target="_blank" rel="noopener" class="var-source-link var-verified">
+                                ✓ مشاهده آگهی منبع (تأییدشده توسط جست‌وجوی گوگل)
+                            </a>`;
+                        } else {
+                            linkCell = `<a href="${c.source_url}" target="_blank" rel="noopener" class="var-source-link var-unverified">
+                                ⚠ لینک ادعاشده توسط هوش مصنوعی (تأیید مستقل نشده - قبل از اتکا بررسی کنید)
+                            </a>`;
+                        }
+                    }
+                    return `
+                        <tr>
+                            <td>${c.description || '—'}</td>
+                            <td>${c.price_total_short || '—'}</td>
+                            <td>${c.price_per_sqm_short || '—'}</td>
+                            <td>${linkCell}</td>
+                        </tr>
+                    `;
+                }).join('');
                 comparablesHtml = `
                     <div class="var-comparables-table">
                         <strong>موارد مشابه بررسی‌شده:</strong>
                         <table>
-                            <thead><tr><th>توضیح</th><th>ارزش کل</th><th>قیمت هر متر</th></tr></thead>
+                            <thead><tr><th>توضیح</th><th>ارزش کل</th><th>قیمت هر متر</th><th>منبع</th></tr></thead>
                             <tbody>${rows}</tbody>
                         </table>
                     </div>
                 `;
             }
+
+            const groundingBadge = d.grounded
+                ? '<span class="var-grounding-badge var-grounding-on">🔍 با جست‌وجوی واقعی وب (Google Search Grounding)</span>'
+                : '<span class="var-grounding-badge var-grounding-off">📚 فقط بر اساس دانش قبلی مدل (بدون جست‌وجوی زنده)</span>';
+
             return `
                 <div class="var-confidence">میزان اطمینان: ${d.confidence || 'نامشخص'}</div>
+                ${groundingBadge}
                 <div class="var-value">${d.value_short}</div>
                 ${rangeHtml}
                 ${perSqmHtml}
