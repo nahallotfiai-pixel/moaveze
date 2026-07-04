@@ -24,8 +24,12 @@ class Moaveze_Houzez_Integration {
         // Add "تبدیل به معاوضه" row action link in the properties list
         // table (the row of links under each title: ویرایش | ویرایش
         // سریع | ...) - the most discoverable, standard-WordPress-UI
-        // placement for per-row actions.
+        // placement for per-row actions. Hook BOTH filters since
+        // Houzez's 'property' CPT registration varies between versions
+        // (hierarchical vs non-hierarchical) and WordPress uses
+        // page_row_actions for hierarchical, post_row_actions for non.
         add_filter('post_row_actions', array($this, 'add_row_action_convert'), 10, 2);
+        add_filter('page_row_actions', array($this, 'add_row_action_convert'), 10, 2);
 
         // "تبدیل به آگهی معاوضه" meta box on Houzez property edit screen
         add_action('add_meta_boxes', array($this, 'add_send_to_exchange_metabox'));
