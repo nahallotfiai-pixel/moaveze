@@ -131,6 +131,8 @@ final class Moaveze_Plus {
         require_once MOAVEZE_PLUS_PATH . 'includes/modules/class-favorites.php';
         require_once MOAVEZE_PLUS_PATH . 'includes/modules/class-ai-valuation.php';
         require_once MOAVEZE_PLUS_PATH . 'includes/modules/class-ai-suggestions.php';
+        require_once MOAVEZE_PLUS_PATH . 'includes/modules/class-public-valuation.php';
+        require_once MOAVEZE_PLUS_PATH . 'includes/modules/class-sms-melipayamak.php';
         require_once MOAVEZE_PLUS_PATH . 'includes/modules/class-addons.php';
 
         // REST API

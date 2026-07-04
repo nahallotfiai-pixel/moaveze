@@ -24,6 +24,7 @@ class Moaveze_Settings {
             'pages'          => 'صفحات',
             'ai'             => 'هوش مصنوعی',
             'addons'         => 'امکانات تکمیلی',
+            'sms'            => 'پیامک (SMS)',
         );
     }
 
@@ -160,6 +161,9 @@ class Moaveze_Settings {
                 break;
             case 'addons':
                 $this->render_addons_tab();
+                break;
+            case 'sms':
+                $this->render_sms_tab();
                 break;
         }
     }
@@ -693,6 +697,185 @@ class Moaveze_Settings {
                 </td>
             </tr>
         </table>
+
+        <h3 style="margin-top:30px;">ارزش‌گذاری آنلاین ملک (عمومی)</h3>
+        <p class="description">قسمت عمومی ارزش‌گذاری ملک برای کاربران سایت. شورت‌کد: <code>[moaveze_public_valuation]</code></p>
+        <table class="form-table moaveze-form-table">
+            <tr>
+                <th><label for="moaveze_public_valuation_enabled">فعال‌سازی ارزش‌گذاری عمومی</label></th>
+                <td>
+                    <label class="moaveze-switch">
+                        <input type="checkbox" id="moaveze_public_valuation_enabled" name="moaveze_public_valuation_enabled" value="yes" <?php checked(get_option('moaveze_public_valuation_enabled'), 'yes'); ?>>
+                        <span class="moaveze-slider"></span>
+                    </label>
+                    <p class="description">کاربران می‌توانند مشخصات ملک خود را وارد کرده و ارزش تقریبی ببینند (لینک منابع فقط به مدیر/مشاور نشان داده می‌شود)</p>
+                </td>
+            </tr>
+            <tr>
+                <th><label for="moaveze_public_valuation_payment_required">نیاز به پرداخت</label></th>
+                <td>
+                    <label class="moaveze-switch">
+                        <input type="checkbox" id="moaveze_public_valuation_payment_required" name="moaveze_public_valuation_payment_required" value="yes" <?php checked(get_option('moaveze_public_valuation_payment_required'), 'yes'); ?>>
+                        <span class="moaveze-slider"></span>
+                    </label>
+                    <p class="description">در صورت فعال بودن، کاربر قبل از مشاهده نتیجه باید هزینه پرداخت کند (مدیران و مشاوران رایگان)</p>
+                </td>
+            </tr>
+            <tr>
+                <th><label for="moaveze_public_valuation_price">قیمت ارزش‌گذاری (تومان)</label></th>
+                <td>
+                    <input type="number" id="moaveze_public_valuation_price" name="moaveze_public_valuation_price" value="<?php echo esc_attr(get_option('moaveze_public_valuation_price', '50000')); ?>" class="regular-text" min="1000">
+                    <p class="description">مبلغی که کاربر باید برای هر ارزش‌گذاری پرداخت کند</p>
+                </td>
+            </tr>
+            <tr>
+                <th><label for="moaveze_public_valuation_gateway">درگاه پرداخت</label></th>
+                <td>
+                    <select id="moaveze_public_valuation_gateway" name="moaveze_public_valuation_gateway">
+                        <option value="zarinpal" <?php selected(get_option('moaveze_public_valuation_gateway'), 'zarinpal'); ?>>زرین‌پال (ZarinPal)</option>
+                        <option value="idpay" <?php selected(get_option('moaveze_public_valuation_gateway'), 'idpay'); ?>>آی‌دی‌پی (IDPay)</option>
+                    </select>
+                </td>
+            </tr>
+            <tr>
+                <th><label for="moaveze_public_valuation_zarinpal_merchant">کد مرچنت زرین‌پال</label></th>
+                <td>
+                    <input type="text" id="moaveze_public_valuation_zarinpal_merchant" name="moaveze_public_valuation_zarinpal_merchant" value="<?php echo esc_attr(get_option('moaveze_public_valuation_zarinpal_merchant')); ?>" class="regular-text" dir="ltr" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
+                </td>
+            </tr>
+            <tr>
+                <th><label for="moaveze_public_valuation_idpay_api_key">کلید API آی‌دی‌پی</label></th>
+                <td>
+                    <input type="text" id="moaveze_public_valuation_idpay_api_key" name="moaveze_public_valuation_idpay_api_key" value="<?php echo esc_attr(get_option('moaveze_public_valuation_idpay_api_key')); ?>" class="regular-text" dir="ltr">
+                </td>
+            </tr>
+        </table>
+        <?php
+    }
+
+    /**
+     * SMS (پیامک) Tab - melipayamak settings + test + event toggles.
+     */
+    private function render_sms_tab() {
+        ?>
+        <h3>تنظیمات پیامک (melipayamak.com)</h3>
+        <table class="form-table moaveze-form-table">
+            <tr>
+                <th><label for="moaveze_sms_enabled">فعال‌سازی اعلان پیامکی</label></th>
+                <td>
+                    <label class="moaveze-switch">
+                        <input type="checkbox" id="moaveze_sms_enabled" name="moaveze_sms_enabled" value="yes" <?php checked(get_option('moaveze_sms_enabled'), 'yes'); ?>>
+                        <span class="moaveze-slider"></span>
+                    </label>
+                </td>
+            </tr>
+            <tr>
+                <th><label for="moaveze_sms_username">نام کاربری melipayamak</label></th>
+                <td><input type="text" id="moaveze_sms_username" name="moaveze_sms_username" value="<?php echo esc_attr(get_option('moaveze_sms_username')); ?>" class="regular-text" dir="ltr"></td>
+            </tr>
+            <tr>
+                <th><label for="moaveze_sms_password">رمز عبور melipayamak</label></th>
+                <td><input type="password" id="moaveze_sms_password" name="moaveze_sms_password" value="<?php echo esc_attr(get_option('moaveze_sms_password')); ?>" class="regular-text" dir="ltr" autocomplete="off"></td>
+            </tr>
+            <tr>
+                <th><label for="moaveze_sms_sender_number">شماره ارسال‌کننده</label></th>
+                <td><input type="text" id="moaveze_sms_sender_number" name="moaveze_sms_sender_number" value="<?php echo esc_attr(get_option('moaveze_sms_sender_number')); ?>" class="regular-text" dir="ltr" placeholder="مثال: 50004001"></td>
+            </tr>
+            <tr>
+                <th><label for="moaveze_sms_admin_phone">شماره مدیر (برای دریافت اعلان‌ها)</label></th>
+                <td><input type="text" id="moaveze_sms_admin_phone" name="moaveze_sms_admin_phone" value="<?php echo esc_attr(get_option('moaveze_sms_admin_phone')); ?>" class="regular-text" dir="ltr" placeholder="مثال: 09123456789"></td>
+            </tr>
+            <tr>
+                <th>تست ارسال پیامک</th>
+                <td>
+                    <button type="button" id="moaveze-test-sms-btn" class="button button-secondary">
+                        <span class="dashicons dashicons-email-alt"></span> ارسال پیامک تست
+                    </button>
+                    <span id="moaveze-test-sms-result" style="margin-right:10px;"></span>
+                    <p class="description">یک پیامک تست به شماره مدیر (بالا) ارسال می‌شود تا مطمئن شوید تنظیمات صحیح است.</p>
+                </td>
+            </tr>
+        </table>
+
+        <h3 style="margin-top:30px;">رویدادهای اعلان پیامکی</h3>
+        <p class="description">هرکدام از رویدادهای زیر را که فعال کنید، هنگام وقوع آن یک پیامک اعلان ارسال می‌شود.</p>
+        <table class="form-table moaveze-form-table">
+            <tr>
+                <th><label>ثبت آگهی جدید</label></th>
+                <td>
+                    <label class="moaveze-switch">
+                        <input type="checkbox" name="moaveze_sms_on_new_listing" value="yes" <?php checked(get_option('moaveze_sms_on_new_listing'), 'yes'); ?>>
+                        <span class="moaveze-slider"></span>
+                    </label>
+                    <span class="description">به مدیر اعلان می‌شود</span>
+                </td>
+            </tr>
+            <tr>
+                <th><label>دریافت پیشنهاد معاوضه</label></th>
+                <td>
+                    <label class="moaveze-switch">
+                        <input type="checkbox" name="moaveze_sms_on_offer_received" value="yes" <?php checked(get_option('moaveze_sms_on_offer_received'), 'yes'); ?>>
+                        <span class="moaveze-slider"></span>
+                    </label>
+                    <span class="description">به مدیر اعلان می‌شود</span>
+                </td>
+            </tr>
+            <tr>
+                <th><label>شناسایی تطابق جدید</label></th>
+                <td>
+                    <label class="moaveze-switch">
+                        <input type="checkbox" name="moaveze_sms_on_match_found" value="yes" <?php checked(get_option('moaveze_sms_on_match_found'), 'yes'); ?>>
+                        <span class="moaveze-slider"></span>
+                    </label>
+                    <span class="description">به مدیر اعلان می‌شود</span>
+                </td>
+            </tr>
+            <tr>
+                <th><label>تأیید آگهی توسط مشاور</label></th>
+                <td>
+                    <label class="moaveze-switch">
+                        <input type="checkbox" name="moaveze_sms_on_listing_approved" value="yes" <?php checked(get_option('moaveze_sms_on_listing_approved'), 'yes'); ?>>
+                        <span class="moaveze-slider"></span>
+                    </label>
+                    <span class="description">به مالک آگهی (شماره تماس ثبت‌شده) اعلان می‌شود</span>
+                </td>
+            </tr>
+            <tr>
+                <th><label>اتمام ارزش‌گذاری ملک</label></th>
+                <td>
+                    <label class="moaveze-switch">
+                        <input type="checkbox" name="moaveze_sms_on_valuation_complete" value="yes" <?php checked(get_option('moaveze_sms_on_valuation_complete'), 'yes'); ?>>
+                        <span class="moaveze-slider"></span>
+                    </label>
+                    <span class="description">به مدیر اعلان می‌شود</span>
+                </td>
+            </tr>
+        </table>
+
+        <script>
+        jQuery(function($) {
+            $('#moaveze-test-sms-btn').on('click', function() {
+                var $btn = $(this).prop('disabled', true);
+                var $result = $('#moaveze-test-sms-result');
+                $result.text('در حال ارسال...');
+                $.post(moavezeAdmin.ajaxUrl, {
+                    action: 'moaveze_test_sms',
+                    nonce: moavezeAdmin.nonce,
+                    phone: $('#moaveze_sms_admin_phone').val(),
+                }, function(r) {
+                    $btn.prop('disabled', false);
+                    if (r.success) {
+                        $result.html('<span style="color:#16a34a;">✓ ' + r.data.message + '</span>');
+                    } else {
+                        $result.html('<span style="color:#dc2626;">✗ ' + (r.data || 'خطا') + '</span>');
+                    }
+                }).fail(function() {
+                    $btn.prop('disabled', false);
+                    $result.html('<span style="color:#dc2626;">✗ خطا در ارتباط با سرور</span>');
+                });
+            });
+        });
+        </script>
         <?php
     }
 
