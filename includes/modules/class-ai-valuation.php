@@ -190,6 +190,7 @@ class Moaveze_AI_Valuation {
             'reasoning'           => $v->reasoning ?: $v->manual_notes,
             'grounded'            => !empty($comparables_data['grounded']),
             'comparables'         => $comparables,
+            'all_grounded_sources' => $comparables_data['all_grounded_sources'] ?? array(),
             'status'              => $v->status,
             'date'                => Moaveze_Helpers::jalali_date($v->created_at, 'Y/m/d H:i'),
         ));
@@ -906,9 +907,12 @@ class Moaveze_AI_Valuation {
             'confidence'       => $parsed['confidence'],
             'reasoning'        => $parsed['methodology'] ? ($parsed['methodology'] . "\n\n" . $parsed['reasoning']) : $parsed['reasoning'],
             'comparables'      => wp_json_encode(array(
-                'price_per_sqm' => $parsed['price_per_sqm'],
-                'grounded'      => $parsed['grounded'],
-                'items'         => $parsed['comparables'],
+                'price_per_sqm'        => $parsed['price_per_sqm'],
+                'grounded'             => $parsed['grounded'],
+                'items'                => $parsed['comparables'],
+                'all_grounded_sources' => array_map(function ($s) {
+                    return array('title' => $s['title'] ?: 'منبع بدون عنوان', 'url' => $s['resolved'] ?: $s['redirect']);
+                }, $result['grounded_urls'] ?? array()),
             )),
             'raw_response'     => $result['text'],
             'status'           => 'pending',
@@ -927,6 +931,18 @@ class Moaveze_AI_Valuation {
             'reasoning'     => $parsed['reasoning'],
             'grounded'      => $parsed['grounded'],
             'comparables'   => $this->format_comparables_for_display($parsed['comparables']),
+            // The FULL raw list of every source Google's search really
+            // retrieved for this answer, regardless of whether the AI
+            // matched it to a specific comparable above - shown as
+            // independent proof a real search happened, per the user's
+            // explicit request to be able to verify this ("تا ما بفهمیم
+            // واقعا استناد میکنه یا نه").
+            'all_grounded_sources' => array_map(function ($s) {
+                return array(
+                    'title' => $s['title'] ?: 'منبع بدون عنوان',
+                    'url'   => $s['resolved'] ?: $s['redirect'],
+                );
+            }, $result['grounded_urls'] ?? array()),
             'provider'      => self::get_providers()[$provider]['label'] ?? $provider,
         ));
     }
@@ -940,10 +956,14 @@ class Moaveze_AI_Valuation {
     private function format_comparables_for_display($comparables) {
         return array_map(function ($c) {
             return array(
-                'description'        => $c['description'],
+                'description'         => $c['description'],
                 'price_total_short'   => $c['price_total'] ? Moaveze_Helpers::short_price($c['price_total']) : null,
                 'price_per_sqm_short' => $c['price_per_sqm'] ? Moaveze_Helpers::short_price($c['price_per_sqm']) : null,
                 'source_url'          => $c['source_url'] ?? '',
+                // 'verified'            = real page URL resolved and Google-confirmed
+                // 'verified_unresolved' = Google-confirmed but only Google's redirect link is available (page resolution failed)
+                // 'unverified'          = model gave a link Google doesn't independently confirm
+                // 'none'                = no link at all (grounding was off)
                 'url_status'          => $c['url_status'] ?? 'none',
             );
         }, $comparables);
@@ -1190,25 +1210,51 @@ PROMPT;
      * difference at a glance, per the explicit user request to be able
      * to tell "آیا واقعا استناد میکنه یا نه".
      */
-    private function verify_comparable_urls($comparables, $grounded_urls) {
+    private function verify_comparable_urls($comparables, $grounded_sources) {
         // Normalize both sides (strip protocol/www/trailing slash) for a
         // resilient-but-still-meaningful comparison, since the model's
-        // quoted URL and Google's grounding-chunk URL can differ in
+        // quoted URL and Google's own redirect-link value can differ in
         // trivial formatting while pointing at the same real page.
         $normalize = function ($url) {
             $url = preg_replace('#^https?://(www\.)?#i', '', trim($url));
             return rtrim($url, '/');
         };
-        $normalized_grounded = array_map($normalize, $grounded_urls);
 
         foreach ($comparables as &$c) {
             if (empty($c['source_url'])) {
                 $c['url_status'] = 'none';
                 continue;
             }
-            $c['url_status'] = in_array($normalize($c['source_url']), $normalized_grounded, true)
-                ? 'verified'
-                : 'unverified';
+            // The model can only ever have echoed back Google's own
+            // redirect-link value (it has no access to the real
+            // underlying URL either - see resolve_redirect_url()
+            // docblock), so we match against the REDIRECT link, then
+            // substitute in the already-resolved real destination URL
+            // for display, so the consultant sees the raw listing link
+            // rather than Google's opaque wrapper.
+            $normalized_claimed = $normalize($c['source_url']);
+            $match = null;
+            foreach ($grounded_sources as $source) {
+                if ($normalize($source['redirect']) === $normalized_claimed) {
+                    $match = $source;
+                    break;
+                }
+            }
+
+            if ($match && $match['resolved']) {
+                $c['url_status'] = 'verified';
+                $c['source_url'] = $match['resolved'];
+            } elseif ($match) {
+                // Google confirmed this source was really used, but our
+                // own redirect-resolution attempt failed (e.g. a
+                // transient network error) - still mark it verified
+                // and fall back to the redirect link itself rather
+                // than silently dropping a genuinely-confirmed source.
+                $c['url_status'] = 'verified_unresolved';
+                $c['source_url'] = $match['redirect'];
+            } else {
+                $c['url_status'] = 'unverified';
+            }
         }
 
         return $comparables;
@@ -1326,17 +1372,77 @@ PROMPT;
             return array('success' => false, 'text' => '', 'error' => $body['error']['message'] ?? 'پاسخ نامعتبر از Gemini');
         }
 
-        // Extract the REAL, Google-verified URLs actually used for this
-        // grounded answer (if any) - see docblock above.
+        // Extract the URLs Google's grounding tool actually used for
+        // this answer, then RESOLVE each one ourselves to its real,
+        // final destination page - see resolve_redirect_url() docblock
+        // for why this extra step is necessary (Google's API only ever
+        // returns its own opaque tracking-redirect link, never the raw
+        // underlying page URL, per Google's own documented limitation).
         $grounded_urls = array();
         $chunks = $candidate['groundingMetadata']['groundingChunks'] ?? array();
         foreach ($chunks as $chunk) {
-            if (!empty($chunk['web']['uri'])) {
-                $grounded_urls[] = $chunk['web']['uri'];
-            }
+            if (empty($chunk['web']['uri'])) continue;
+            $redirect_url = $chunk['web']['uri'];
+            $grounded_urls[] = array(
+                'redirect' => $redirect_url,
+                'resolved' => $this->resolve_redirect_url($redirect_url) ?: '',
+                'title'    => $chunk['web']['title'] ?? '',
+            );
         }
 
         return array('success' => true, 'text' => $text, 'error' => '', 'grounded_urls' => $grounded_urls);
+    }
+
+    /**
+     * Follow an HTTP redirect chain server-side and return the FINAL
+     * destination URL - used to unwrap Google's
+     * "vertexaisearch.cloud.google.com/grounding-api-redirect/..."
+     * tracking links into the actual raw listing URL (e.g. a real
+     * divar.ir link) the user explicitly asked to see, instead of
+     * Google's opaque wrapper link.
+     *
+     * BACKGROUND: this wrapper-link behavior is a documented, currently
+     * unresolved limitation of Google's Gemini grounding API - the
+     * groundingChunks[].web.uri field NEVER contains the raw source
+     * URL directly, only this redirect link (confirmed via an open
+     * feature request on Google's own AI developer forum:
+     * https://discuss.ai.google.dev/t/feature-request-provide-actual-source-urls-in-grounding-metadata/107352).
+     * The redirect link is still a genuine, Google-issued, clickable
+     * link that correctly forwards to the real page when opened - it
+     * is not fake or broken - but showing that long opaque token to a
+     * consultant instead of the real listing URL is exactly the "لینک
+     * خام" problem the user reported, so we resolve it ourselves here.
+     */
+    private function resolve_redirect_url($url) {
+        // A realistic browser User-Agent is important here - some
+        // sites (including classifieds sites) block requests carrying
+        // WordPress's default HTTP API user-agent string.
+        $response = wp_remote_get($url, array(
+            'timeout'     => 12,
+            'redirection' => 5,
+            'sslverify'   => false,
+            'headers'     => array(
+                'User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
+            ),
+        ));
+
+        if (is_wp_error($response)) {
+            return null;
+        }
+
+        // WordPress's HTTP API (backed by the Requests library since
+        // WP 4.6) tracks the final URL reached after following the
+        // full redirect chain on the wrapped response object - this is
+        // the only reliable way to get it via wp_remote_get().
+        $http_response = $response['http_response'] ?? null;
+        if ($http_response instanceof WP_HTTP_Requests_Response) {
+            $requests_response = $http_response->get_response_object();
+            if (!empty($requests_response->url) && $requests_response->url !== $url) {
+                return $requests_response->url;
+            }
+        }
+
+        return null;
     }
 
     /**

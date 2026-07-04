@@ -277,7 +277,11 @@
                     if (c.source_url) {
                         if (c.url_status === 'verified') {
                             linkCell = `<a href="${c.source_url}" target="_blank" rel="noopener" class="var-source-link var-verified">
-                                ✓ مشاهده آگهی منبع (تأییدشده توسط جست‌وجوی گوگل)
+                                ✓ مشاهده آگهی منبع (لینک واقعی - تأییدشده توسط جست‌وجوی گوگل)
+                            </a>`;
+                        } else if (c.url_status === 'verified_unresolved') {
+                            linkCell = `<a href="${c.source_url}" target="_blank" rel="noopener" class="var-source-link var-verified">
+                                ✓ مشاهده آگهی منبع (تأییدشده - از طریق لینک واسط گوگل)
                             </a>`;
                         } else {
                             linkCell = `<a href="${c.source_url}" target="_blank" rel="noopener" class="var-source-link var-unverified">
@@ -309,6 +313,27 @@
                 ? '<span class="var-grounding-badge var-grounding-on">🔍 با جست‌وجوی واقعی وب (Google Search Grounding)</span>'
                 : '<span class="var-grounding-badge var-grounding-off">📚 فقط بر اساس دانش قبلی مدل (بدون جست‌وجوی زنده)</span>';
 
+            // Independent proof a real search happened: the FULL raw
+            // list of every page Google's search actually retrieved for
+            // this answer, regardless of whether the model matched it
+            // to one of the comparables above. If this list is empty
+            // while "grounded" is true, that itself is meaningful (the
+            // search ran but found nothing usable).
+            let allSourcesHtml = '';
+            if (d.grounded && d.all_grounded_sources && d.all_grounded_sources.length) {
+                const items = d.all_grounded_sources.map((s) => `
+                    <li><a href="${s.url}" target="_blank" rel="noopener">${s.title || s.url}</a></li>
+                `).join('');
+                allSourcesHtml = `
+                    <details class="var-all-sources">
+                        <summary>📋 مشاهده همه ${d.all_grounded_sources.length} منبعی که واقعاً در این جست‌وجو بازیابی شد (اثبات مستقل انجام جست‌وجو)</summary>
+                        <ul>${items}</ul>
+                    </details>
+                `;
+            } else if (d.grounded) {
+                allSourcesHtml = `<p class="var-no-sources">جست‌وجوی وب انجام شد اما هیچ صفحه قابل استنادی بازیابی نشد.</p>`;
+            }
+
             return `
                 <div class="var-confidence">میزان اطمینان: ${d.confidence || 'نامشخص'}</div>
                 ${groundingBadge}
@@ -317,6 +342,7 @@
                 ${perSqmHtml}
                 <div class="var-reasoning">${d.reasoning || ''}</div>
                 ${comparablesHtml}
+                ${allSourcesHtml}
             `;
         },
 
