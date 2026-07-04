@@ -164,6 +164,34 @@ class Moaveze_Admin {
             'moaveze-valuations',
             array($this, 'render_valuations_page')
         );
+
+        // ROOT-CAUSE FIX for "دکمه تبدیل به معاوضه هیچ‌جا نیست":
+        // Houzez's own edit.php?post_type=property list table is
+        // heavily customized by the theme and does not fire the
+        // standard WordPress column/row-action filters our previous
+        // fixes relied on (see admin/views/properties.php header
+        // comment for the full diagnosis). This dedicated,
+        // plugin-owned page is completely independent of that screen
+        // and is now the permanent, guaranteed home for the convert
+        // button.
+        add_submenu_page(
+            'moaveze-plus',
+            'آگهی‌های فروش (تبدیل به معاوضه)',
+            'آگهی‌های فروش',
+            'manage_options',
+            'moaveze-properties',
+            array($this, 'render_properties_page')
+        );
+    }
+
+    /**
+     * Render the dedicated Properties (Houzez "property" CPT) page.
+     */
+    public function render_properties_page() {
+        if (!current_user_can('manage_options')) {
+            wp_die('دسترسی ندارید');
+        }
+        include MOAVEZE_PLUS_PATH . 'admin/views/properties.php';
     }
 
     /**

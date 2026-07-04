@@ -40,13 +40,27 @@
                     property_id: propertyId,
                 }, function(response) {
                     if (response.success) {
-                        $btn.replaceWith(`
-                            <p class="status-linked" style="color:#16a34a;font-weight:600;">
-                                <span class="dashicons dashicons-yes-alt"></span> ${response.data.message}
-                            </p>
-                            <a href="${response.data.edit_url}" class="button button-small" target="_blank">ویرایش آگهی معاوضه</a>
-                            <a href="${response.data.view_url}" class="button button-small" target="_blank">مشاهده</a>
-                        `);
+                        // Dedicated "آگهی‌های فروش" admin page
+                        // (admin/views/properties.php) renders the
+                        // conversion status in a separate table cell
+                        // from the action button - update both, if present.
+                        const $row = $btn.closest('tr[data-property-row]');
+                        if ($row.length) {
+                            $row.find('.moaveze-conversion-status-cell').html(
+                                '<span class="dashicons dashicons-yes-alt" style="color:#10b981;"></span> متصل به معاوضه'
+                            );
+                            $btn.replaceWith(
+                                '<a href="' + response.data.edit_url + '" class="button button-small">مشاهده آگهی معاوضه</a>'
+                            );
+                        } else {
+                            $btn.replaceWith(`
+                                <p class="status-linked" style="color:#16a34a;font-weight:600;">
+                                    <span class="dashicons dashicons-yes-alt"></span> ${response.data.message}
+                                </p>
+                                <a href="${response.data.edit_url}" class="button button-small" target="_blank">ویرایش آگهی معاوضه</a>
+                                <a href="${response.data.view_url}" class="button button-small" target="_blank">مشاهده</a>
+                            `);
+                        }
                     } else {
                         const msg = (response.data && response.data.message) || response.data || 'خطا';
                         alert(msg);
