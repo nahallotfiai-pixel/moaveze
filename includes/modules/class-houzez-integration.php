@@ -82,11 +82,16 @@ class Moaveze_Houzez_Integration {
      * Check if Houzez theme is active
      */
     private function is_houzez_active() {
-        $theme = wp_get_theme();
-        return (
-            strpos(strtolower($theme->get('Name')), 'houzez') !== false ||
-            strpos(strtolower($theme->get('Template')), 'houzez') !== false
-        );
+        // The site uses a child theme named "tabrizhome" (or
+        // "tabrizhome-child") that is a renamed/rebranded Houzez
+        // child. The actual Houzez parent theme was ALSO renamed to
+        // "tabrizhome" (its folder + style.css Name), so neither the
+        // active theme's Name nor its Template field contains the word
+        // "houzez" at all - they both say "tabrizhome". We detect this
+        // by checking for the Houzez-specific post type 'property'
+        // being registered, which is the most reliable indicator that
+        // Houzez (regardless of name/branding) is actually running.
+        return post_type_exists('property');
     }
 
     /**
