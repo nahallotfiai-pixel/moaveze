@@ -197,8 +197,21 @@ class Moaveze_Offers {
 
         if (is_wp_error($post_id) || !$post_id) return false;
 
-        wp_set_object_terms($post_id, $property_type, 'moaveze_property_type');
-        wp_set_object_terms($post_id, $district, 'moaveze_district');
+        // BUG FIX (same root cause as the main submission form - see
+        // Moaveze_Submission_Form::set_taxonomy_by_slug()): $property_type/
+        // $district here are the term SLUGs from the mini-form's
+        // <select>, but wp_set_object_terms() treats a raw string as a
+        // term NAME to match-or-create, not a slug - so this was
+        // silently creating garbage terms instead of attaching the real
+        // "آپارتمان"/"ولیعصر" terms.
+        Moaveze_Submission_Form::set_taxonomy_by_slug($post_id, 'moaveze_property_type', $property_type);
+        Moaveze_Submission_Form::set_taxonomy_by_slug($post_id, 'moaveze_district', $district);
+
+        // Resolve to the real Persian names for the plain-text columns
+        // below (moaveze_exchanges.property_type/district), read
+        // directly by the matching algorithm and AI valuation prompt.
+        $property_type_name = ($t = get_term_by('slug', $property_type, 'moaveze_property_type')) ? $t->name : $property_type;
+        $district_name = ($t = get_term_by('slug', $district, 'moaveze_district')) ? $t->name : $district;
 
         $meta = array(
             'property_value' => $value,
@@ -230,11 +243,11 @@ class Moaveze_Offers {
             array(
                 'post_id'        => $post_id,
                 'user_id'        => $user_id ?: 0,
-                'property_type'  => $property_type,
+                'property_type'  => $property_type_name,
                 'property_value' => $value,
                 'area_sqm'       => $area,
                 'exchange_type'  => 'flexible',
-                'district'       => $district,
+                'district'       => $district_name,
                 'status'         => 'active',
                 'visibility'     => $visibility,
                 'contact_name'   => $user->display_name ?: $title,

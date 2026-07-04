@@ -152,7 +152,7 @@ class Moaveze_Shortcodes {
         <div class="moaveze-wrapper">
             <div class="moaveze-search-widget">
                 <h3>جستجوی معاوضه</h3>
-                <form class="moaveze-search-form" action="<?php echo get_post_type_archive_link('moaveze_exchange'); ?>" method="get">
+                <form class="moaveze-search-form" action="<?php echo esc_url(Moaveze_Pages::get_listings_url()); ?>" method="get">
                     <select name="property_type">
                         <option value="">نوع ملک</option>
                         <?php

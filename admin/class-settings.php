@@ -21,6 +21,7 @@ class Moaveze_Settings {
             'privacy'        => 'حریم خصوصی',
             'chat'           => 'چت داخلی',
             'integration'    => 'یکپارچه‌سازی',
+            'pages'          => 'صفحات',
             'ai'             => 'هوش مصنوعی',
             'addons'         => 'امکانات تکمیلی',
         );
@@ -75,6 +76,10 @@ class Moaveze_Settings {
         // Integration Settings
         register_setting('moaveze_integration', 'moaveze_houzez_sync');
         register_setting('moaveze_integration', 'moaveze_import_existing');
+
+        // Pages (which real WP Page each plugin flow points to)
+        register_setting('moaveze_pages', 'moaveze_page_submit');
+        register_setting('moaveze_pages', 'moaveze_page_listings');
 
         // Add-on Features (each independently toggleable per user request)
         register_setting('moaveze_addons', 'moaveze_addon_favorites');
@@ -146,6 +151,9 @@ class Moaveze_Settings {
                 break;
             case 'integration':
                 $this->render_integration_tab();
+                break;
+            case 'pages':
+                $this->render_pages_tab();
                 break;
             case 'ai':
                 $this->render_ai_tab();
@@ -667,6 +675,86 @@ class Moaveze_Settings {
                 </td>
             </tr>
         </table>
+        <?php
+    }
+
+    /**
+     * صفحات (Pages) Tab
+     *
+     * Lets the admin see/change which real WP Page each plugin flow
+     * points to, and re-create either one on demand - fixes both the
+     * "/exchange/ را نمی‌توان ویرایش کرد" question (explains why, and
+     * offers the closest editable equivalent) and the
+     * "/submit-exchange/ صفحه‌ای موجود نیست" 404 (the page is now a
+     * real, always-present, fully editable WP page - see
+     * includes/class-pages.php).
+     */
+    private function render_pages_tab() {
+        $submit_page_id = (int) get_option('moaveze_page_submit', 0);
+        $listings_page_id = (int) get_option('moaveze_page_listings', 0);
+        $all_pages = get_pages(array('sort_column' => 'post_title'));
+        ?>
+        <div class="moaveze-notice" style="background:#eef2ff;border:1px solid #c7d2fe;color:#3730a3;">
+            <span class="dashicons dashicons-info"></span>
+            <p>
+                آرشیو <code>/exchange/</code> یک صفحه خودکار وردپرسی برای نوع پست «معاوضه‌ها» است و مثل صفحات معمولی در «صفحات» وردپرس قابل ویرایش نیست (این محدودیت وردپرس است، نه افزونه) - اما محتوای آن از طریق قالب <code>templates/archive-exchange.php</code> این افزونه کنترل می‌شود.
+                در عوض، صفحه «ثبت آگهی» و صفحه لیست آگهی‌ها زیر، صفحات واقعی و کاملاً قابل ویرایش در پیشخوان هستند.
+            </p>
+        </div>
+
+        <table class="form-table moaveze-form-table">
+            <tr>
+                <th>صفحه «ثبت آگهی معاوضه»</th>
+                <td>
+                    <select name="moaveze_page_submit">
+                        <option value="0">— هیچ (بازگشت به آرشیو /exchange/) —</option>
+                        <?php foreach ($all_pages as $p) : ?>
+                            <option value="<?php echo esc_attr($p->ID); ?>" <?php selected($submit_page_id, $p->ID); ?>><?php echo esc_html($p->post_title); ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                    <?php if ($submit_page_id && get_post($submit_page_id)) : ?>
+                        <a href="<?php echo esc_url(get_permalink($submit_page_id)); ?>" target="_blank" class="button button-small">مشاهده</a>
+                        <a href="<?php echo esc_url(get_edit_post_link($submit_page_id, 'raw')); ?>" target="_blank" class="button button-small">ویرایش در پیشخوان</a>
+                    <?php endif; ?>
+                    <button type="button" class="button moaveze-recreate-page-btn" data-page-key="submit">بازسازی صفحه پیش‌فرض</button>
+                    <p class="description">این صفحه باید حاوی شورت‌کد <code>[moaveze_submit_form]</code> باشد تا فرم ثبت آگهی نمایش داده شود.</p>
+                </td>
+            </tr>
+            <tr>
+                <th>صفحه «لیست آگهی‌های معاوضه»</th>
+                <td>
+                    <select name="moaveze_page_listings">
+                        <option value="0">— هیچ (بازگشت به آرشیو /exchange/) —</option>
+                        <?php foreach ($all_pages as $p) : ?>
+                            <option value="<?php echo esc_attr($p->ID); ?>" <?php selected($listings_page_id, $p->ID); ?>><?php echo esc_html($p->post_title); ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                    <?php if ($listings_page_id && get_post($listings_page_id)) : ?>
+                        <a href="<?php echo esc_url(get_permalink($listings_page_id)); ?>" target="_blank" class="button button-small">مشاهده</a>
+                        <a href="<?php echo esc_url(get_edit_post_link($listings_page_id, 'raw')); ?>" target="_blank" class="button button-small">ویرایش در پیشخوان</a>
+                    <?php endif; ?>
+                    <button type="button" class="button moaveze-recreate-page-btn" data-page-key="listings">بازسازی صفحه پیش‌فرض</button>
+                    <p class="description">این صفحه باید حاوی شورت‌کد <code>[moaveze_listings]</code> باشد تا لیست آگهی‌ها نمایش داده شود.</p>
+                </td>
+            </tr>
+        </table>
+        <div id="moaveze-recreate-page-result" style="margin-top:10px;"></div>
+        <script>
+        jQuery(function($) {
+            $('.moaveze-recreate-page-btn').on('click', function() {
+                var $btn = $(this).prop('disabled', true);
+                var key = $btn.data('page-key');
+                $.post(ajaxurl, { action: 'moaveze_recreate_pages', nonce: moavezeAdmin.nonce, page_key: key }, function(r) {
+                    $btn.prop('disabled', false);
+                    if (r.success) {
+                        $('#moaveze-recreate-page-result').html('<p style="color:#16a34a;">✓ ' + r.data.message + ' - صفحه را ذخیره کرده و رفرش کنید.</p>');
+                    } else {
+                        $('#moaveze-recreate-page-result').html('<p style="color:#dc2626;">✗ خطا</p>');
+                    }
+                });
+            });
+        });
+        </script>
         <?php
     }
 

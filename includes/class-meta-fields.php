@@ -19,6 +19,99 @@ class Moaveze_Meta_Fields {
         add_action('pre_get_posts', array(__CLASS__, 'hide_private_reciprocal_listings'));
         add_action('wp_ajax_moaveze_repair_feature_terms', array(__CLASS__, 'ajax_repair_feature_terms'));
         add_action('wp_ajax_moaveze_toggle_feature', array(__CLASS__, 'ajax_toggle_feature'));
+        add_action('wp_ajax_moaveze_repair_type_district_terms', array(__CLASS__, 'ajax_repair_type_district_terms'));
+    }
+
+    /**
+     * ONE-TIME REPAIR TOOL (dashboard button): fixes listings affected
+     * by the "نوع ملک درج نمیشه" bug - wp_set_object_terms() was called
+     * with the raw SLUG from the property-type/district <select>
+     * (e.g. "apartment" or a percent-encoded Persian slug) instead of
+     * resolving it to the real term first. That call treats a plain
+     * string as a term NAME to match-or-CREATE, so on any listing where
+     * the slug didn't happen to exactly equal an existing term's name,
+     * WordPress silently created a brand-new garbage term (literally
+     * named after the slug) and attached THAT instead of the real,
+     * correctly-seeded Persian term - which is why the listing then
+     * showed no proper نوع ملک/منطقه at all (the garbage term's "name"
+     * being an obscure/empty-looking slug string is easy to miss in
+     * templates that only ever render $terms[0]->name).
+     *
+     * For every moaveze_property_type / moaveze_district term whose
+     * slug is NOT the normal WordPress sanitize_title() of its own
+     * name (i.e. it looks like it was created FROM a slug rather than a
+     * real name - a strong signal something went through the buggy
+     * code path), this:
+     *   1. Tries to find the "real" term with a matching slug pattern
+     *      is not reliable, so instead this simply reports every such
+     *      suspicious term for manual admin review rather than guessing
+     *      a destructive auto-fix (property type text can't be safely
+     *      reverse-engineered from a slug alone in every case).
+     * It ALSO fixes the more common, safe case: posts that have ZERO
+     * moaveze_property_type or moaveze_district terms at all (the
+     * garbage term was created but for some reason not attached, or the
+     * field was left completely empty) - these are just listed so the
+     * admin can quickly open and re-save them from wp-admin, where the
+     * dropdown will now save correctly thanks to the code fix.
+     */
+    public static function ajax_repair_type_district_terms() {
+        check_ajax_referer('moaveze_admin_nonce', 'nonce');
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('دسترسی ندارید');
+        }
+
+        $suspicious_terms = array();
+        foreach (array('moaveze_property_type', 'moaveze_district') as $taxonomy) {
+            $terms = get_terms(array('taxonomy' => $taxonomy, 'hide_empty' => false));
+            if (is_wp_error($terms)) continue;
+            foreach ($terms as $term) {
+                // A term created BY THE BUG has, as its "name", the raw
+                // string that was submitted as a <select> VALUE - which
+                // is that same term's own slug. For Persian-language
+                // terms, WordPress stores taxonomy slugs as raw percent-
+                // encoded UTF-8 (e.g. "%d8%a2%d9%be..." for "آپارتمان" -
+                // the same encoding visible in this site's own exchange/
+                // listing permalinks), so a garbage term's "name" looks
+                // like a %XX-encoded string or a plain ascii slug -
+                // never real Persian text. Also flag exact name===slug
+                // matches (covers any edge case with ASCII-only slugs).
+                $looks_like_raw_slug = (bool) preg_match('/%[0-9a-f]{2}/i', $term->name)
+                    || preg_match('/^[a-z0-9\-_]+$/i', $term->name);
+                if ($term->name === $term->slug || $looks_like_raw_slug) {
+                    $suspicious_terms[] = array(
+                        'taxonomy' => $taxonomy,
+                        'term_id'  => $term->term_id,
+                        'name'     => $term->name,
+                        'count'    => $term->count,
+                        'edit_url' => admin_url("edit-tags.php?action=edit&taxonomy={$taxonomy}&tag_ID={$term->term_id}&post_type=moaveze_exchange"),
+                    );
+                }
+            }
+        }
+
+        $missing_type_or_district = get_posts(array(
+            'post_type'   => 'moaveze_exchange',
+            'post_status' => 'any',
+            'numberposts' => -1,
+            'fields'      => 'ids',
+            'tax_query'   => array(
+                'relation' => 'OR',
+                array('taxonomy' => 'moaveze_property_type', 'operator' => 'NOT EXISTS'),
+                array('taxonomy' => 'moaveze_district', 'operator' => 'NOT EXISTS'),
+            ),
+        ));
+
+        wp_send_json_success(array(
+            'suspicious_terms'  => $suspicious_terms,
+            'missing_posts'     => array_map(function ($id) {
+                return array('id' => $id, 'title' => get_the_title($id), 'edit_url' => get_edit_post_link($id, 'raw'));
+            }, $missing_type_or_district),
+            'message' => sprintf(
+                '%d ترم مشکوک (شبیه به slug) و %d آگهی بدون نوع ملک/منطقه پیدا شد.',
+                count($suspicious_terms),
+                count($missing_type_or_district)
+            ),
+        ));
     }
 
     /**

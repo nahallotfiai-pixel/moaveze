@@ -21,7 +21,7 @@ get_header();
                 معاوضه ملک در تبریز
             </h1>
             <p class="moaveze-archive-subtitle">ملک خود را معاوضه کنید و بدون واسطه به خانه رویایی‌تان برسید</p>
-            <a href="<?php echo home_url('/submit-exchange/'); ?>" class="moaveze-btn moaveze-btn-primary">
+            <a href="<?php echo esc_url(Moaveze_Pages::get_submit_url()); ?>" class="moaveze-btn moaveze-btn-primary">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
                 </svg>

@@ -168,6 +168,18 @@ $activities = Moaveze_Dashboard::get_recent_activity();
             <span class="dashicons dashicons-hammer"></span> اصلاح نام ویژگی‌های انگلیسی
         </button>
         <div id="repair-feature-result" style="margin-top:10px;"></div>
+
+        <hr style="margin:18px 0;border-color:#fed7aa;">
+
+        <h3 style="color:#9a3412;margin-top:0;">بررسی نوع ملک / منطقه ثبت‌نشده</h3>
+        <p style="color:#c2410c;">
+            یک باگ در فرم ثبت آگهی باعث می‌شد در برخی موارد «نوع ملک» یا «منطقه» به‌صورت صحیح ذخیره نشود (این باگ اصلاح شد، اما آگهی‌های قبلی را بررسی می‌کند).
+            این ابزار آگهی‌هایی که نوع ملک/منطقه ندارند و ترم‌های خرابِ احتمالی را پیدا می‌کند تا به‌صورت دستی اصلاح کنید.
+        </p>
+        <button id="check-type-district" class="button button-primary" style="background:#ea580c;border-color:#ea580c;">
+            <span class="dashicons dashicons-search"></span> بررسی نوع ملک / منطقه
+        </button>
+        <div id="check-type-district-result" style="margin-top:10px;"></div>
     </div>
     <script>
     jQuery(function($) {
@@ -180,6 +192,34 @@ $activities = Moaveze_Dashboard::get_recent_activity();
                     $('#repair-feature-result').html('<p style="color:#dc2626;">✗ ' + (r.data || 'خطا') + '</p>');
                 }
                 $btn.prop('disabled', false).html('<span class="dashicons dashicons-hammer"></span> اصلاح نام ویژگی‌های انگلیسی');
+            });
+        });
+
+        $('#check-type-district').on('click', function() {
+            var $btn = $(this).prop('disabled', true).text('در حال بررسی...');
+            $.post(ajaxurl, { action: 'moaveze_repair_type_district_terms', nonce: moavezeAdmin.nonce }, function(r) {
+                var $result = $('#check-type-district-result');
+                if (r.success) {
+                    var html = '<p style="color:#16a34a;">✓ ' + r.data.message + '</p>';
+                    if (r.data.suspicious_terms.length) {
+                        html += '<strong>ترم‌های مشکوک (احتمالاً خراب - حذف یا اصلاح کنید):</strong><ul style="margin:6px 0 12px;">';
+                        r.data.suspicious_terms.forEach(function(t) {
+                            html += '<li>[' + t.taxonomy + '] "' + t.name + '" (' + t.count + ' آگهی) - <a href="' + t.edit_url + '" target="_blank">مشاهده/حذف</a></li>';
+                        });
+                        html += '</ul>';
+                    }
+                    if (r.data.missing_posts.length) {
+                        html += '<strong>آگهی‌های بدون نوع ملک یا منطقه (باز کنید و دوباره ذخیره کنید):</strong><ul style="margin:6px 0;">';
+                        r.data.missing_posts.forEach(function(p) {
+                            html += '<li>' + p.title + ' - <a href="' + p.edit_url + '" target="_blank">ویرایش</a></li>';
+                        });
+                        html += '</ul>';
+                    }
+                    $result.html(html);
+                } else {
+                    $result.html('<p style="color:#dc2626;">✗ ' + (r.data || 'خطا') + '</p>');
+                }
+                $btn.prop('disabled', false).html('<span class="dashicons dashicons-search"></span> بررسی نوع ملک / منطقه');
             });
         });
     });

@@ -101,6 +101,104 @@ class Moaveze_AI_Valuation {
         add_action('wp_ajax_moaveze_test_ai_connection', array($this, 'ajax_test_ai_connection'));
         add_action('wp_ajax_moaveze_fetch_ai_models', array($this, 'ajax_fetch_ai_models'));
         add_action('wp_ajax_moaveze_save_ai_model', array($this, 'ajax_save_ai_model'));
+        add_action('wp_ajax_moaveze_delete_valuation', array($this, 'ajax_delete_valuation'));
+        add_action('wp_ajax_moaveze_get_valuation_details', array($this, 'ajax_get_valuation_details'));
+    }
+
+    /**
+     * AJAX: permanently delete one valuation history entry - per
+     * explicit user request ("بتوان نتایج قبلی تحلیل ها رو هم پاک کرد
+     * یا مشاهده کرد"). Refuses to delete an entry that is currently
+     * "applied" (published as the listing's expert value) without an
+     * explicit confirm flag, so a consultant can't accidentally delete
+     * the record backing what's currently shown live on the site.
+     */
+    public function ajax_delete_valuation() {
+        check_ajax_referer('moaveze_valuation', 'nonce');
+        if (!$this->current_user_is_staff()) wp_send_json_error('دسترسی ندارید');
+
+        $valuation_id = absint($_POST['valuation_id'] ?? 0);
+        $force = !empty($_POST['force']);
+        global $wpdb;
+
+        $valuation = $wpdb->get_row($wpdb->prepare(
+            "SELECT * FROM {$wpdb->prefix}moaveze_valuations WHERE id = %d", $valuation_id
+        ));
+        if (!$valuation) wp_send_json_error('ارزش‌گذاری یافت نشد');
+
+        if ($valuation->status === 'applied' && !$force) {
+            wp_send_json_error(array(
+                'message'          => 'این ارزش‌گذاری هم‌اکنون روی آگهی منتشر شده است. اگر حذف شود، کادر «قیمت کارشناسی» هم از صفحه آگهی حذف خواهد شد.',
+                'requires_confirm' => true,
+            ));
+        }
+
+        $wpdb->delete($wpdb->prefix . 'moaveze_valuations', array('id' => $valuation_id));
+
+        // If the deleted entry was the one currently published on the
+        // listing, also clear the expert-value display meta so the
+        // frontend card disappears immediately instead of pointing at
+        // an orphaned/deleted record.
+        if ($valuation->status === 'applied') {
+            delete_post_meta($valuation->post_id, '_moaveze_expert_value');
+            delete_post_meta($valuation->post_id, '_moaveze_expert_min');
+            delete_post_meta($valuation->post_id, '_moaveze_expert_max');
+            delete_post_meta($valuation->post_id, '_moaveze_expert_value_type');
+            delete_post_meta($valuation->post_id, '_moaveze_expert_value_date');
+            if (class_exists('Moaveze_Meta_Fields')) {
+                Moaveze_Meta_Fields::purge_listing_cache($valuation->post_id);
+            }
+        }
+
+        wp_send_json_success(array('message' => 'ارزش‌گذاری حذف شد'));
+    }
+
+    /**
+     * AJAX: fetch full details of one past valuation for the "مشاهده"
+     * (view) button in the history list - returns everything needed to
+     * re-render the same rich result box shown right after running a
+     * fresh AI valuation (methodology, reasoning, structured
+     * comparables), without needing to re-run the AI or dig into the
+     * database manually.
+     */
+    public function ajax_get_valuation_details() {
+        check_ajax_referer('moaveze_valuation', 'nonce');
+        if (!$this->current_user_is_staff()) wp_send_json_error('دسترسی ندارید');
+
+        $valuation_id = absint($_POST['valuation_id'] ?? 0);
+        global $wpdb;
+        $v = $wpdb->get_row($wpdb->prepare(
+            "SELECT * FROM {$wpdb->prefix}moaveze_valuations WHERE id = %d", $valuation_id
+        ));
+        if (!$v) wp_send_json_error('ارزش‌گذاری یافت نشد');
+
+        $comparables_data = json_decode($v->comparables ?: '{}', true);
+        $comparables = array();
+        if (!empty($comparables_data['items']) && is_array($comparables_data['items'])) {
+            foreach ($comparables_data['items'] as $c) {
+                $comparables[] = array(
+                    'description'        => $c['description'] ?? '',
+                    'price_total_short'   => !empty($c['price_total']) ? Moaveze_Helpers::short_price($c['price_total']) : null,
+                    'price_per_sqm_short' => !empty($c['price_per_sqm']) ? Moaveze_Helpers::short_price($c['price_per_sqm']) : null,
+                );
+            }
+        }
+
+        $providers = self::get_providers();
+
+        wp_send_json_success(array(
+            'type'                => $v->type,
+            'provider'            => $v->ai_provider ? ($providers[$v->ai_provider]['label'] ?? $v->ai_provider) : null,
+            'value_short'         => Moaveze_Helpers::short_price($v->manual_value ?: $v->suggested_value),
+            'min_short'           => ($v->manual_min_value ?: $v->suggested_min) ? Moaveze_Helpers::short_price($v->manual_min_value ?: $v->suggested_min) : null,
+            'max_short'           => ($v->manual_max_value ?: $v->suggested_max) ? Moaveze_Helpers::short_price($v->manual_max_value ?: $v->suggested_max) : null,
+            'price_per_sqm_short' => !empty($comparables_data['price_per_sqm']) ? Moaveze_Helpers::short_price($comparables_data['price_per_sqm']) : null,
+            'confidence'          => $v->confidence,
+            'reasoning'           => $v->reasoning ?: $v->manual_notes,
+            'comparables'         => $comparables,
+            'status'              => $v->status,
+            'date'                => Moaveze_Helpers::jalali_date($v->created_at, 'Y/m/d H:i'),
+        ));
     }
 
     /**
@@ -559,9 +657,9 @@ class Moaveze_AI_Valuation {
 
             <?php if (!empty($history)) : ?>
                 <div class="valuation-history">
-                    <h4>تاریخچه ارزش‌گذاری‌ها</h4>
+                    <h4>تاریخچه ارزش‌گذاری‌ها (<?php echo count($history); ?>)</h4>
                     <?php foreach ($history as $v) : ?>
-                        <div class="valuation-history-item">
+                        <div class="valuation-history-item" data-valuation-id="<?php echo esc_attr($v->id); ?>">
                             <span class="vh-type <?php echo esc_attr($v->type); ?>">
                                 <?php echo $v->type === 'ai' ? '🤖 هوش مصنوعی' : '👤 دستی'; ?>
                                 <?php if ($v->type === 'ai' && $v->ai_provider) echo ' (' . esc_html($providers[$v->ai_provider]['label'] ?? $v->ai_provider) . ')'; ?>
@@ -570,14 +668,23 @@ class Moaveze_AI_Valuation {
                                 <?php echo esc_html(Moaveze_Helpers::short_price($v->manual_value ?: $v->suggested_value)); ?>
                             </span>
                             <span class="vh-date"><?php echo esc_html(Moaveze_Helpers::jalali_date($v->created_at, 'Y/m/d H:i')); ?></span>
-                            <?php if ($v->status === 'applied') : ?>
-                                <span class="vh-applied">✓ اعمال شده روی آگهی</span>
-                            <?php else : ?>
-                                <button type="button" class="button button-small valuation-apply-btn" data-valuation-id="<?php echo esc_attr($v->id); ?>">
-                                    اعمال روی آگهی
+                            <span class="vh-actions">
+                                <?php if ($v->status === 'applied') : ?>
+                                    <span class="vh-applied">✓ اعمال شده روی آگهی</span>
+                                <?php else : ?>
+                                    <button type="button" class="button button-small valuation-apply-btn" data-valuation-id="<?php echo esc_attr($v->id); ?>">
+                                        اعمال روی آگهی
+                                    </button>
+                                <?php endif; ?>
+                                <button type="button" class="button button-small valuation-view-btn" data-valuation-id="<?php echo esc_attr($v->id); ?>" title="مشاهده جزئیات کامل">
+                                    <span class="dashicons dashicons-visibility"></span>
                                 </button>
-                            <?php endif; ?>
+                                <button type="button" class="button button-small valuation-delete-btn" data-valuation-id="<?php echo esc_attr($v->id); ?>" title="حذف این ارزش‌گذاری">
+                                    <span class="dashicons dashicons-trash"></span>
+                                </button>
+                            </span>
                         </div>
+                        <div class="valuation-history-details" data-valuation-id="<?php echo esc_attr($v->id); ?>" style="display:none;"></div>
                     <?php endforeach; ?>
                 </div>
             <?php endif; ?>
@@ -740,50 +847,110 @@ class Moaveze_AI_Valuation {
             'suggested_min'    => $parsed['min'],
             'suggested_max'    => $parsed['max'],
             'confidence'       => $parsed['confidence'],
-            'reasoning'        => $parsed['reasoning'],
-            'comparables'      => wp_json_encode($parsed['comparables']),
+            'reasoning'        => $parsed['methodology'] ? ($parsed['methodology'] . "\n\n" . $parsed['reasoning']) : $parsed['reasoning'],
+            'comparables'      => wp_json_encode(array(
+                'price_per_sqm' => $parsed['price_per_sqm'],
+                'items'         => $parsed['comparables'],
+            )),
             'raw_response'     => $result['text'],
             'status'           => 'pending',
             'created_by'       => get_current_user_id(),
         ));
 
         wp_send_json_success(array(
-            'valuation_id' => $wpdb->insert_id,
-            'value'        => $parsed['value'],
-            'value_short'  => Moaveze_Helpers::short_price($parsed['value']),
-            'min_short'    => $parsed['min'] ? Moaveze_Helpers::short_price($parsed['min']) : null,
-            'max_short'    => $parsed['max'] ? Moaveze_Helpers::short_price($parsed['max']) : null,
-            'confidence'   => $parsed['confidence'],
-            'reasoning'    => $parsed['reasoning'],
-            'comparables'  => $parsed['comparables'],
-            'provider'     => self::get_providers()[$provider]['label'] ?? $provider,
+            'valuation_id'  => $wpdb->insert_id,
+            'value'         => $parsed['value'],
+            'value_short'   => Moaveze_Helpers::short_price($parsed['value']),
+            'min_short'     => $parsed['min'] ? Moaveze_Helpers::short_price($parsed['min']) : null,
+            'max_short'     => $parsed['max'] ? Moaveze_Helpers::short_price($parsed['max']) : null,
+            'price_per_sqm_short' => $parsed['price_per_sqm'] ? Moaveze_Helpers::short_price($parsed['price_per_sqm']) : null,
+            'confidence'    => $parsed['confidence'],
+            'methodology'   => $parsed['methodology'],
+            'reasoning'     => $parsed['reasoning'],
+            'comparables'   => array_map(function ($c) {
+                return array(
+                    'description'         => $c['description'],
+                    'price_total_short'    => $c['price_total'] ? Moaveze_Helpers::short_price($c['price_total']) : null,
+                    'price_per_sqm_short'  => $c['price_per_sqm'] ? Moaveze_Helpers::short_price($c['price_per_sqm']) : null,
+                );
+            }, $parsed['comparables']),
+            'provider'      => self::get_providers()[$provider]['label'] ?? $provider,
         ));
     }
 
     /**
+     * Resolve the listing's district/property-type as reliably as
+     * possible, with a defensive fallback chain:
+     *   1. moaveze_exchanges.district / .property_type columns (now
+     *      correct for anything saved after the taxonomy-slug bug fix -
+     *      see Moaveze_Submission_Form::resolve_term_name()).
+     *   2. The post's own moaveze_district / moaveze_property_type
+     *      TAXONOMY terms (authoritative source, always correct even
+     *      for legacy rows where the exchanges-table column might still
+     *      hold stale/bad data from before the fix).
+     *   3. Explicitly "نامشخص" only as an absolute last resort - this
+     *      is what previously caused the AI to say "به دلیل عدم تعیین
+     *      دقیق منطقه/محله ... ارزش‌گذاری با عدم قطعیت بالایی همراه
+     *      است"، since the taxonomy-slug bug meant these were very
+     *      often actually empty at the time.
+     */
+    private function resolve_district_and_type($exchange) {
+        $district_terms = get_the_terms($exchange->post_id, 'moaveze_district');
+        $type_terms = get_the_terms($exchange->post_id, 'moaveze_property_type');
+
+        $district = $exchange->district ?: '';
+        if (!$district && $district_terms && !is_wp_error($district_terms)) {
+            $district = $district_terms[0]->name;
+        }
+
+        $property_type = $exchange->property_type ?: '';
+        if (!$property_type && $type_terms && !is_wp_error($type_terms)) {
+            $property_type = $type_terms[0]->name;
+        }
+
+        return array(
+            'district'      => $district ?: 'نامشخص',
+            'property_type' => $property_type ?: 'نامشخص',
+        );
+    }
+
+    /**
      * Build the structured Persian prompt describing the listing and
-     * asking the AI to reason like an experienced Tabriz real-estate
-     * consultant, grounded in comparable listings it is aware of (e.g.
-     * from Divar-style classifieds), and to answer in a strict JSON
-     * shape we can reliably parse.
+     * asking the AI to reason like a certified, methodical Tabriz
+     * real-estate appraiser (کارشناس رسمی ارزیابی املاک), grounded in
+     * comparable listings it is aware of (e.g. from Divar-style
+     * classifieds), and to answer in a strict, structured JSON shape
+     * (including a real comparables ARRAY, not just a free-text note)
+     * we can reliably parse and render in a technical, professional
+     * format for the consultant.
      */
     private function build_valuation_prompt($exchange) {
-        $type_terms = wp_get_post_terms($exchange->post_id, 'moaveze_property_type', array('fields' => 'names'));
+        $resolved = $this->resolve_district_and_type($exchange);
         $feature_terms = wp_get_post_terms($exchange->post_id, 'moaveze_feature', array('fields' => 'names'));
         $year_built = get_post_meta($exchange->post_id, '_moaveze_year_built', true);
         $rooms = get_post_meta($exchange->post_id, '_moaveze_rooms', true);
         $floor = get_post_meta($exchange->post_id, '_moaveze_floor', true);
+        $total_floors = get_post_meta($exchange->post_id, '_moaveze_total_floors', true);
+        $address = get_post_meta($exchange->post_id, '_moaveze_address', true);
+        $area = (int) $exchange->area_sqm;
+        $owner_value = (int) $exchange->property_value;
+        $owner_price_per_sqm = $area > 0 ? round($owner_value / $area) : 0;
+        $current_year_jalali = Moaveze_Helpers::jalali_date(current_time('mysql'), 'Y');
+        $building_age = ($year_built && $current_year_jalali) ? max(0, (int) $current_year_jalali - (int) $year_built) : null;
 
         $details = array(
-            'شهر'          => 'تبریز',
-            'منطقه/محله'   => $exchange->district ?: 'نامشخص',
-            'نوع ملک'      => $type_terms[0] ?? $exchange->property_type,
-            'متراژ'        => $exchange->area_sqm . ' متر مربع',
-            'تعداد اتاق'   => $rooms ?: 'نامشخص',
-            'طبقه'         => $floor ?: 'نامشخص',
-            'سال ساخت'     => $year_built ?: 'نامشخص',
-            'امکانات'      => !empty($feature_terms) ? implode('، ', $feature_terms) : 'ثبت نشده',
-            'ارزش ثبت‌شده توسط مالک' => number_format($exchange->property_value) . ' تومان',
+            'شهر'                       => 'تبریز',
+            'منطقه/محله'                => $resolved['district'],
+            'آدرس تقریبی'               => $address ?: 'ثبت نشده',
+            'نوع ملک'                   => $resolved['property_type'],
+            'متراژ زیربنا'              => $area . ' متر مربع',
+            'تعداد اتاق خواب'           => $rooms ?: 'نامشخص',
+            'طبقه'                      => ($floor !== '' ? $floor : 'نامشخص') . ($total_floors ? " از {$total_floors} طبقه" : ''),
+            'سال ساخت (شمسی)'           => $year_built ?: 'نامشخص',
+            'قدمت بنا (سال)'            => $building_age !== null ? $building_age : 'نامشخص',
+            'امکانات و ویژگی‌ها'        => !empty($feature_terms) ? implode('، ', $feature_terms) : 'ثبت نشده',
+            'ارزش ثبت‌شده توسط مالک'    => number_format($owner_value) . ' تومان',
+            'قیمت هر متر (بر اساس ادعای مالک)' => $owner_price_per_sqm ? number_format($owner_price_per_sqm) . ' تومان/متر' : 'نامشخص',
         );
 
         $details_text = '';
@@ -792,22 +959,37 @@ class Moaveze_AI_Valuation {
         }
 
         return <<<PROMPT
-تو یک کارشناس باتجربه ارزیابی املاک و مستغلات در شهر تبریز، ایران هستی که با قیمت‌های واقعی بازار مسکن تبریز (از جمله آگهی‌های مشابه در سایت‌های نیازمندی مثل دیوار) کاملاً آشنایی داری.
+تو یک کارشناس رسمی و باتجربه ارزیابی املاک و مستغلات (کارشناس کانون ارزیابان) در شهر تبریز، ایران هستی. روش کار تو کاملاً فنی، حرفه‌ای و مبتنی بر داده است - نه یک تخمین سطحی. با قیمت‌های واقعی بازار مسکن تبریز (از جمله آگهی‌های مشابه در سایت‌های نیازمندی مثل دیوار و شیپور) و روند قیمت هر منطقه کاملاً آشنایی داری.
 
-با توجه به مشخصات زیر یک ملک، ارزش واقعی و منصفانه آن را به تومان تخمین بزن. عوامل مهم مؤثر بر قیمت مانند منطقه، متراژ، سال ساخت، طبقه و امکانات را در نظر بگیر و ارزش را با آگهی‌های مشابهی که از این مناطق و مشخصات در بازار می‌شناسی مقایسه کن.
+روش ارزیابی که باید دنبال کنی (رویکرد مقایسه‌ای/Sales Comparison Approach):
+۱. ابتدا میانگین قیمت هر متر مربع را برای «همین منطقه» و «همین نوع ملک» بر اساس دانش خودت از بازار تخمین بزن.
+۲. سپس با توجه به عوامل تعدیل‌کننده (Adjustment Factors) زیر، این قیمت پایه هر متر را برای این ملک خاص تعدیل کن:
+   - سال ساخت / قدمت بنا (بنای نوساز معمولاً ۱۰ تا ۲۵ درصد نسبت به بنای قدیمی‌تر در همان منطقه صرافه بیشتری دارد)
+   - طبقه و تعداد کل طبقات (طبقات میانی معمولاً ارزش بالاتری نسبت به همکف یا طبقه آخر بدون آسانسور دارند)
+   - امکانات (آسانسور، پارکینگ، انباری و... هرکدام معمولاً چند درصد به ارزش می‌افزایند)
+   - متراژ (واحدهای بسیار کوچک یا بسیار بزرگ نسبت به میانگین منطقه معمولاً قیمت هر متر متفاوتی دارند)
+   - موقعیت دقیق در منطقه (نزدیکی به خیابان اصلی، امکانات رفاهی، حمل‌ونقل عمومی)
+۳. حاصل‌ضرب قیمت پایه تعدیل‌شده هر متر در متراژ را به‌عنوان ارزش نهایی محاسبه کن.
+۴. حداقل ۲ الی ۳ نمونه معامله یا آگهی مشابه فرضی (اما واقع‌گرایانه و نزدیک به وضعیت واقعی بازار) از همین منطقه یا مناطق مشابه تبریز ارائه بده تا کارشناس بتواند ارزیابی تو را با موارد مشابه راستی‌آزمایی کند.
+۵. اگر منطقه یا نوع ملک نامشخص بود، این را در بخش reasoning صریحاً بگو و سطح اطمینان (confidence) را متناسب با آن پایین‌تر تنظیم کن؛ در غیر این صورت (وقتی منطقه و نوع ملک مشخص است) از عبارات کلی و مبهم مثل "عدم قطعیت بالا" خودداری کن و مستقیماً بر اساس داده‌های داده‌شده تحلیل کن.
 
-مشخصات ملک:
+مشخصات کامل ملک:
 {$details_text}
 
-پاسخ را دقیقاً و فقط به‌صورت یک JSON با این ساختار بده (بدون هیچ توضیح اضافه یا متن قبل/بعد از JSON):
+پاسخ را دقیقاً و فقط به‌صورت یک JSON با این ساختار بده (بدون هیچ توضیح اضافه، مقدمه، یا متن قبل/بعد از JSON، و بدون markdown code fence):
 
 {
-  "estimated_value": <عدد به تومان، بدون جداکننده هزارگان>,
+  "estimated_value": <عدد به تومان، بدون جداکننده هزارگان - ارزش نهایی تخمینی>,
   "min_value": <کمترین مقدار محدوده منطقی به تومان>,
   "max_value": <بیشترین مقدار محدوده منطقی به تومان>,
+  "price_per_sqm": <قیمت پیشنهادی هر متر مربع به تومان، پس از تمام تعدیل‌ها>,
   "confidence": "<یکی از: بالا, متوسط, پایین>",
-  "reasoning": "<توضیح کوتاه فارسی، حداکثر ۴-۵ جمله، درباره دلیل این ارزش‌گذاری و مقایسه با موارد مشابه>",
-  "comparable_notes": "<یک یا دو نمونه فرضی از محدوده قیمتی موارد مشابه در همین منطقه که می‌شناسی، به فارسی>"
+  "methodology_summary": "<۲-۳ جمله فارسی: قیمت پایه هر متر منطقه که فرض کردی + مهم‌ترین عوامل تعدیل‌کننده که اعمال کردی و جهت هرکدام (مثبت/منفی)>",
+  "reasoning": "<تحلیل فنی و مبتنی بر داده، حداکثر ۵-۶ جمله فارسی، درباره دلیل این ارزش‌گذاری، مقایسه با قیمت ادعایی مالک، و هرگونه ریسک یا نقطه ضعف در داده‌های موجود>",
+  "comparables": [
+    {"description": "<توضیح کوتاه نمونه مشابه اول: منطقه، متراژ، سال ساخت>", "price_total": <عدد تومان>, "price_per_sqm": <عدد تومان>},
+    {"description": "<توضیح کوتاه نمونه مشابه دوم>", "price_total": <عدد تومان>, "price_per_sqm": <عدد تومان>}
+  ]
 }
 PROMPT;
     }
@@ -826,13 +1008,35 @@ PROMPT;
 
         $data = json_decode($json_str, true);
 
+        // Comparables are now a structured ARRAY of {description,
+        // price_total, price_per_sqm} objects (previously a single
+        // free-text string) - build a human-readable summary for
+        // display while keeping the structured data available too.
+        $comparables_structured = array();
+        if (!empty($data['comparables']) && is_array($data['comparables'])) {
+            foreach ($data['comparables'] as $c) {
+                if (!is_array($c)) continue;
+                $comparables_structured[] = array(
+                    'description'   => $c['description'] ?? '',
+                    'price_total'   => isset($c['price_total']) ? absint($c['price_total']) : null,
+                    'price_per_sqm' => isset($c['price_per_sqm']) ? absint($c['price_per_sqm']) : null,
+                );
+            }
+        }
+
         return array(
-            'value'       => isset($data['estimated_value']) ? absint($data['estimated_value']) : 0,
-            'min'         => isset($data['min_value']) ? absint($data['min_value']) : null,
-            'max'         => isset($data['max_value']) ? absint($data['max_value']) : null,
-            'confidence'  => $data['confidence'] ?? 'نامشخص',
-            'reasoning'   => $data['reasoning'] ?? mb_substr($text, 0, 500),
-            'comparables' => $data['comparable_notes'] ?? '',
+            'value'         => isset($data['estimated_value']) ? absint($data['estimated_value']) : 0,
+            'price_per_sqm' => isset($data['price_per_sqm']) ? absint($data['price_per_sqm']) : null,
+            'methodology'   => $data['methodology_summary'] ?? '',
+            'min'           => isset($data['min_value']) ? absint($data['min_value']) : null,
+            'max'           => isset($data['max_value']) ? absint($data['max_value']) : null,
+            'confidence'    => $data['confidence'] ?? 'نامشخص',
+            'reasoning'     => $data['reasoning'] ?? mb_substr($text, 0, 500),
+            // Structured array of {description, price_total, price_per_sqm}
+            // (previously a single free-text "comparable_notes" string) -
+            // stored as-is (json-encoded) in the DB `comparables` column
+            // and rendered as a real mini-table in the metabox/history.
+            'comparables'   => $comparables_structured,
         );
     }
 

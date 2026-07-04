@@ -86,7 +86,7 @@ $feature_icons = array(
                 خانه
             </a>
             <span class="sep">/</span>
-            <a href="<?php echo get_post_type_archive_link('moaveze_exchange'); ?>">معاوضه ملک</a>
+            <a href="<?php echo esc_url(Moaveze_Pages::get_listings_url()); ?>">معاوضه ملک</a>
             <span class="sep">/</span>
             <span class="current"><?php the_title(); ?></span>
         </nav>

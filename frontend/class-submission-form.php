@@ -555,7 +555,7 @@ class Moaveze_Submission_Form {
                     </div>
                     <h3>آگهی شما با موفقیت ثبت شد!</h3>
                     <p>آگهی شما پس از بررسی توسط کارشناسان ما منتشر خواهد شد. در صورت یافتن مورد مناسب با شما تماس خواهیم گرفت.</p>
-                    <a href="<?php echo get_post_type_archive_link('moaveze_exchange'); ?>" class="moaveze-btn moaveze-btn-primary">
+                    <a href="<?php echo esc_url(Moaveze_Pages::get_listings_url()); ?>" class="moaveze-btn moaveze-btn-primary">
                         مشاهده آگهی‌های معاوضه
                     </a>
                 </div>
@@ -565,6 +565,57 @@ class Moaveze_Submission_Form {
         return ob_get_clean();
     }
 
+
+    /**
+     * Resolve a taxonomy term submitted by its SLUG (as every <select>
+     * in this plugin's forms does) and attach it to the post by term
+     * ID - the only reliable way to do this, since wp_set_object_terms()
+     * treats a raw string as a term NAME (creating a new term if no
+     * exact name match exists) rather than as a slug. This is the fix
+     * for the "نوع ملک درج نمیشه" bug: passing a slug like "apartment"
+     * straight into wp_set_object_terms() previously created/matched a
+     * bogus term instead of the real, already-seeded Persian term.
+     *
+     * Falls back to treating the value as a term NAME if no slug match
+     * is found, for backward compatibility with any code path that
+     * might still submit a name instead of a slug.
+     */
+    public static function set_taxonomy_by_slug($post_id, $taxonomy, $slug_or_name) {
+        $slug_or_name = sanitize_text_field($slug_or_name);
+        if (!$slug_or_name) {
+            wp_set_object_terms($post_id, array(), $taxonomy);
+            return;
+        }
+
+        $term = get_term_by('slug', $slug_or_name, $taxonomy);
+        if (!$term) {
+            $term = get_term_by('name', $slug_or_name, $taxonomy);
+        }
+
+        if ($term) {
+            wp_set_object_terms($post_id, array((int) $term->term_id), $taxonomy);
+        } else {
+            // Last resort: let WordPress create it (matches old
+            // behavior) so a submission is never silently dropped just
+            // because the term genuinely doesn't exist yet.
+            wp_set_object_terms($post_id, array($slug_or_name), $taxonomy);
+        }
+    }
+
+    /**
+     * Resolve a term slug to its human-readable Persian name, for the
+     * few fields (like "desired_property_type") that are stored as
+     * plain post meta rather than an actual taxonomy relationship, but
+     * are still populated from a <select> whose options submit a slug.
+     * Returns the original input unchanged if no matching term exists
+     * (e.g. empty "فرقی ندارد" selection).
+     */
+    private static function resolve_term_name($taxonomy, $slug) {
+        $slug = sanitize_text_field($slug);
+        if (!$slug) return '';
+        $term = get_term_by('slug', $slug, $taxonomy);
+        return $term ? $term->name : $slug;
+    }
 
     /**
      * Handle form submission via AJAX
@@ -603,9 +654,23 @@ class Moaveze_Submission_Form {
             wp_send_json_error(array('message' => 'خطا در ثبت آگهی. لطفاً مجدداً تلاش کنید.'));
         }
 
-        // Set taxonomies
-        wp_set_object_terms($post_id, sanitize_text_field($_POST['property_type']), 'moaveze_property_type');
-        wp_set_object_terms($post_id, sanitize_text_field($_POST['property_district']), 'moaveze_district');
+        // Set taxonomies.
+        // BUG FIX (root cause of "وقتی نوع ملک رو آپارتمان قید میکنیم
+        // درج نمیشه در آگهی"): the <select> options submit the term's
+        // SLUG (e.g. "apartment" or a percent-style slug), but
+        // wp_set_object_terms() treats a plain string argument as a
+        // term NAME to match-or-CREATE - never as a slug. Since a
+        // term's slug is usually different from its Persian display
+        // name, this silently created a brand-new garbage term (named
+        // literally after the slug) instead of attaching the real,
+        // already-existing "آپارتمان"/"ولیعصر" term - so the listing
+        // ended up tagged with the wrong term (or one that never
+        // rendered correctly). We now resolve the submitted slug to its
+        // real term ID first via get_term_by('slug', ...) and pass that
+        // ID to wp_set_object_terms(), with a same-taxonomy-name fallback
+        // for full backward compatibility with any already-stored data.
+        self::set_taxonomy_by_slug($post_id, 'moaveze_property_type', $_POST['property_type']);
+        self::set_taxonomy_by_slug($post_id, 'moaveze_district', $_POST['property_district']);
 
         if (!empty($_POST['features'])) {
             // FIX: the checkbox <input> values are English slugs
@@ -644,7 +709,13 @@ class Moaveze_Submission_Form {
             'longitude'             => sanitize_text_field($_POST['longitude'] ?? ''),
             'address'               => sanitize_textarea_field($_POST['address'] ?? ''),
             'exchange_type'         => sanitize_text_field($_POST['exchange_type'] ?? ''),
-            'desired_property_type' => sanitize_text_field($_POST['desired_property_type'] ?? ''),
+            // BUG FIX: this meta value is displayed directly on the
+            // single listing page (unlike property_type/district above,
+            // it's plain meta, not a taxonomy), but the <select> submits
+            // the term's SLUG - so without resolving it to the term's
+            // Persian NAME here, the page would show the raw English
+            // slug (e.g. "apartment") instead of "آپارتمان".
+            'desired_property_type' => self::resolve_term_name('moaveze_property_type', $_POST['desired_property_type'] ?? ''),
             'desired_min_value'     => absint(str_replace(array(',', ' '), '', $_POST['desired_min_value'] ?? '')),
             'desired_max_value'     => absint(str_replace(array(',', ' '), '', $_POST['desired_max_value'] ?? '')),
             'cash_difference'       => absint(str_replace(array(',', ' '), '', $_POST['cash_difference'] ?? '')),
@@ -686,24 +757,31 @@ class Moaveze_Submission_Form {
             }
         }
 
-        // Insert into exchanges table
+        // Insert into exchanges table.
+        // BUG FIX: store the resolved Persian NAME (not the raw slug)
+        // in these two columns, matching what's actually attached as
+        // taxonomy terms above - this table's property_type/district
+        // columns are read directly by the matching algorithm
+        // (class-matching.php) and the AI valuation prompt builder
+        // (class-ai-valuation.php), both of which need real Persian
+        // text, not an English/percent-encoded slug.
         global $wpdb;
         $wpdb->insert(
             $wpdb->prefix . 'moaveze_exchanges',
             array(
                 'post_id'               => $post_id,
                 'user_id'               => get_current_user_id() ?: 0,
-                'property_type'         => sanitize_text_field($_POST['property_type']),
+                'property_type'         => self::resolve_term_name('moaveze_property_type', $_POST['property_type']),
                 'property_value'        => $property_value,
                 'area_sqm'              => $area,
                 'rooms'                 => absint($_POST['rooms'] ?? 0),
-                'district'              => sanitize_text_field($_POST['property_district']),
+                'district'              => self::resolve_term_name('moaveze_district', $_POST['property_district']),
                 'address'               => sanitize_textarea_field($_POST['address'] ?? ''),
                 'latitude'              => sanitize_text_field($_POST['latitude'] ?? ''),
                 'longitude'             => sanitize_text_field($_POST['longitude'] ?? ''),
                 'exchange_type'         => sanitize_text_field($_POST['exchange_type'] ?? ''),
                 'exchange_conditions'   => wp_json_encode($meta_fields),
-                'desired_property_type' => sanitize_text_field($_POST['desired_property_type'] ?? ''),
+                'desired_property_type' => self::resolve_term_name('moaveze_property_type', $_POST['desired_property_type'] ?? ''),
                 'desired_min_value'     => absint(str_replace(array(',', ' '), '', $_POST['desired_min_value'] ?? '')),
                 'desired_max_value'     => absint(str_replace(array(',', ' '), '', $_POST['desired_max_value'] ?? '')),
                 'cash_difference'       => absint(str_replace(array(',', ' '), '', $_POST['cash_difference'] ?? '')),

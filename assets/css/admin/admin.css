@@ -768,8 +768,20 @@
 .vh-type.ai { color: #7c3aed; }
 .vh-type.manual { color: #0891b2; }
 .vh-value { font-weight: 700; color: #1e293b; }
-.vh-date { color: #94a3b8; margin-right: auto; }
-.vh-applied { color: #16a34a; font-weight: 600; }
+.vh-date { color: #94a3b8; }
+.vh-applied { color: #16a34a; font-weight: 600; white-space: nowrap; }
+.vh-actions { margin-right: auto; display: flex; align-items: center; gap: 6px; }
+.vh-actions .button .dashicons { vertical-align: middle; margin: 0; }
+.valuation-delete-btn.button { color: #dc2626; }
+.valuation-delete-btn.button:hover { color: #fff; background: #dc2626; border-color: #dc2626; }
+.valuation-history-details {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 12px;
+    margin: 4px 0 8px;
+    font-size: 12px;
+}
 
 /* ===== AI Provider Cards (settings) ===== */
 .moaveze-ai-provider-card {
@@ -797,6 +809,68 @@
 }
 .ai-provider-fields .moaveze-field label { display: block; font-size: 12px; font-weight: 600; margin-bottom: 4px; }
 .ai-provider-fields .moaveze-field input { width: 100%; }
+
+/* ===== AI Valuation result box (metabox) ===== */
+.valuation-ai-result {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 16px;
+    margin-top: 12px;
+}
+.valuation-ai-result .var-confidence {
+    display: inline-block;
+    font-size: 12px;
+    font-weight: 600;
+    color: #6366f1;
+    background: #eef2ff;
+    border-radius: 20px;
+    padding: 3px 10px;
+    margin-bottom: 8px;
+}
+.valuation-ai-result .var-value {
+    font-size: 24px;
+    font-weight: 800;
+    color: #1e293b;
+}
+.valuation-ai-result .var-range,
+.valuation-ai-result .var-per-sqm {
+    font-size: 13px;
+    color: #475569;
+    margin-top: 4px;
+}
+.valuation-ai-result .var-methodology {
+    background: #fffbeb;
+    border: 1px dashed #fde68a;
+    border-radius: 8px;
+    padding: 10px 12px;
+    margin: 10px 0;
+    font-size: 13px;
+    color: #92400e;
+    line-height: 1.9;
+}
+.valuation-ai-result .var-reasoning {
+    margin: 10px 0;
+    font-size: 13px;
+    line-height: 2;
+    color: #334155;
+}
+.valuation-ai-result .var-comparables-table table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 8px;
+    font-size: 12px;
+}
+.valuation-ai-result .var-comparables-table th,
+.valuation-ai-result .var-comparables-table td {
+    border: 1px solid #e2e8f0;
+    padding: 6px 8px;
+    text-align: right;
+}
+.valuation-ai-result .var-comparables-table th {
+    background: #f1f5f9;
+    font-weight: 700;
+}
 
 .moaveze-feature-debug-box {
     background: #f0f9ff;

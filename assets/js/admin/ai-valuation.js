@@ -16,6 +16,8 @@
             this.bindApply();
             this.bindTestConnection();
             this.bindFetchModels();
+            this.bindViewHistory();
+            this.bindDeleteHistory();
         },
 
         bindTabs() {
@@ -216,17 +218,14 @@
                     }
 
                     const d = response.data;
-                    let rangeHtml = '';
-                    if (d.min_short && d.max_short) {
-                        rangeHtml = `<div class="var-range">محدوده منطقی: ${d.min_short} تا ${d.max_short}</div>`;
+                    let methodologyHtml = '';
+                    if (d.methodology) {
+                        methodologyHtml = `<div class="var-methodology"><strong>روش محاسبه:</strong> ${d.methodology}</div>`;
                     }
 
                     $result.html(`
-                        <div class="var-confidence">میزان اطمینان: ${d.confidence}</div>
-                        <div class="var-value">${d.value_short}</div>
-                        ${rangeHtml}
-                        <div class="var-reasoning">${d.reasoning}</div>
-                        ${d.comparables ? `<div class="var-comparables">${d.comparables}</div>` : ''}
+                        ${MoavezeValuation.renderValuationDetails(d)}
+                        ${methodologyHtml}
                         <p style="margin-top:10px;font-size:12px;color:#64748b;">پیشنهاد ${d.provider} ذخیره شد. برای اعمال روی آگهی، صفحه را رفرش کرده و از بخش «تاریخچه ارزش‌گذاری‌ها» دکمه «اعمال روی آگهی» را بزنید.</p>
                     `).show();
                 }).fail(() => {
@@ -253,6 +252,128 @@
                         alert(response.data.message || response.data || 'خطا');
                     }
                 });
+            });
+        },
+
+        /**
+         * Build the same rich result markup used right after running a
+         * fresh AI valuation (methodology box + comparables table), for
+         * both the "just ran AI" case and the "viewing a past history
+         * entry" case - shared so the two never visually drift apart.
+         */
+        renderValuationDetails(d) {
+            let rangeHtml = '';
+            if (d.min_short && d.max_short) {
+                rangeHtml = `<div class="var-range">محدوده منطقی: ${d.min_short} تا ${d.max_short}</div>`;
+            }
+            let perSqmHtml = '';
+            if (d.price_per_sqm_short) {
+                perSqmHtml = `<div class="var-per-sqm">قیمت پیشنهادی هر متر: <strong>${d.price_per_sqm_short}</strong></div>`;
+            }
+            let comparablesHtml = '';
+            if (d.comparables && d.comparables.length) {
+                const rows = d.comparables.map((c) => `
+                    <tr>
+                        <td>${c.description || '—'}</td>
+                        <td>${c.price_total_short || '—'}</td>
+                        <td>${c.price_per_sqm_short || '—'}</td>
+                    </tr>
+                `).join('');
+                comparablesHtml = `
+                    <div class="var-comparables-table">
+                        <strong>موارد مشابه بررسی‌شده:</strong>
+                        <table>
+                            <thead><tr><th>توضیح</th><th>ارزش کل</th><th>قیمت هر متر</th></tr></thead>
+                            <tbody>${rows}</tbody>
+                        </table>
+                    </div>
+                `;
+            }
+            return `
+                <div class="var-confidence">میزان اطمینان: ${d.confidence || 'نامشخص'}</div>
+                <div class="var-value">${d.value_short}</div>
+                ${rangeHtml}
+                ${perSqmHtml}
+                <div class="var-reasoning">${d.reasoning || ''}</div>
+                ${comparablesHtml}
+            `;
+        },
+
+        /**
+         * "مشاهده" (view) button in the valuation history list - fetches
+         * and toggles an inline detail panel showing the full
+         * methodology/reasoning/comparables for that past entry,
+         * without needing to re-run the AI (per explicit user request:
+         * "بتوان نتایج قبلی تحلیل ها رو هم ... مشاهده کرد").
+         */
+        bindViewHistory() {
+            $(document).on('click', '.valuation-view-btn', function () {
+                const valuationId = $(this).data('valuation-id');
+                const $details = $(`.valuation-history-details[data-valuation-id="${valuationId}"]`);
+
+                if ($details.is(':visible')) {
+                    $details.slideUp(150);
+                    return;
+                }
+
+                if ($details.data('loaded')) {
+                    $details.slideDown(150);
+                    return;
+                }
+
+                $details.html('<span class="spinner is-active" style="float:none;"></span> در حال بارگذاری...').show();
+
+                $.post(moavezeAdmin.ajaxUrl, {
+                    action: 'moaveze_get_valuation_details',
+                    nonce: $('#moaveze_valuation_nonce').val(),
+                    valuation_id: valuationId,
+                }, function (response) {
+                    if (response.success) {
+                        $details.html(MoavezeValuation.renderValuationDetails(response.data)).data('loaded', true);
+                    } else {
+                        $details.html('<p style="color:#dc2626;">' + (response.data || 'خطا در بارگذاری جزئیات') + '</p>');
+                    }
+                });
+            });
+        },
+
+        /**
+         * "حذف" (delete) button in the valuation history list - per
+         * explicit user request ("بتوان نتایج قبلی تحلیل ها رو هم پاک
+         * کرد"). If the entry is currently published on the listing,
+         * the server refuses on the first attempt and asks for
+         * confirmation (requires_confirm), which we then re-send with
+         * force=1 after the admin explicitly confirms losing the
+         * published قیمت کارشناسی card too.
+         */
+        bindDeleteHistory() {
+            $(document).on('click', '.valuation-delete-btn', function () {
+                const valuationId = $(this).data('valuation-id');
+                const $item = $(this).closest('.valuation-history-item');
+
+                if (!confirm('آیا این ارزش‌گذاری برای همیشه حذف شود؟')) return;
+
+                MoavezeValuation.doDeleteValuation(valuationId, false, $item);
+            });
+        },
+
+        doDeleteValuation(valuationId, force, $item) {
+            $.post(moavezeAdmin.ajaxUrl, {
+                action: 'moaveze_delete_valuation',
+                nonce: $('#moaveze_valuation_nonce').val(),
+                valuation_id: valuationId,
+                force: force ? '1' : '',
+            }, function (response) {
+                if (response.success) {
+                    $item.next('.valuation-history-details').remove();
+                    $item.slideUp(150, function () { $(this).remove(); });
+                } else if (response.data && response.data.requires_confirm) {
+                    if (confirm(response.data.message + '\n\nآیا مطمئنید و می‌خواهید همین حالا حذف کنید؟')) {
+                        MoavezeValuation.doDeleteValuation(valuationId, true, $item);
+                    }
+                } else {
+                    alert((response.data && response.data.message) || response.data || 'خطا در حذف');
+                }
             });
         },
 

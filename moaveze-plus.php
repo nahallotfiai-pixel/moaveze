@@ -64,6 +64,7 @@ final class Moaveze_Plus {
         require_once MOAVEZE_PLUS_PATH . 'includes/class-post-types.php';
         require_once MOAVEZE_PLUS_PATH . 'includes/class-taxonomies.php';
         require_once MOAVEZE_PLUS_PATH . 'includes/class-meta-fields.php';
+        require_once MOAVEZE_PLUS_PATH . 'includes/class-pages.php';
 
         // Admin
         if (is_admin()) {
@@ -136,6 +137,12 @@ final class Moaveze_Plus {
         // Register post types (for flush)
         Moaveze_Post_Types::register();
         Moaveze_Taxonomies::register();
+
+        // Create the real, editable wp-admin Pages for "ثبت آگهی" and
+        // "لیست آگهی‌ها" (see includes/class-pages.php) - fixes the
+        // /submit-exchange/ 404 by making sure a real page actually
+        // exists at activation time, instead of only being linked to.
+        Moaveze_Pages::maybe_create_default_pages();
 
         // Flush rewrite rules
         flush_rewrite_rules();
