@@ -38,14 +38,42 @@ if (!post_type_exists('property')) {
 $paged = isset($_GET['paged']) ? max(1, absint($_GET['paged'])) : 1;
 $per_page = 30;
 
-$query = new WP_Query(array(
+// Search by listing title, or by Houzez's own numeric "Listing ID"
+// (fave_property_id meta - the short internal code shown in the
+// Properties list, e.g. "Listing ID: 5414" - NOT the WordPress post
+// ID) which is what admins actually recognize and search by day to day.
+$search_term = isset($_GET['moaveze_property_search']) ? sanitize_text_field(wp_unslash($_GET['moaveze_property_search'])) : '';
+
+$query_args = array(
     'post_type'      => 'property',
     'post_status'    => array('publish', 'pending', 'draft'),
     'posts_per_page' => $per_page,
     'paged'          => $paged,
     'orderby'        => 'date',
     'order'          => 'DESC',
-));
+);
+
+if ($search_term !== '') {
+    if (ctype_digit($search_term)) {
+        // Looks like a Listing ID - search the Houzez meta field
+        // directly instead of (or in addition to) the title, since
+        // that's what "کد آگهی" actually refers to on this site.
+        $query_args['meta_query'] = array(
+            'relation' => 'OR',
+            array('key' => 'fave_property_id', 'value' => $search_term, 'compare' => '='),
+        );
+        // Also allow it to match a real WP post ID directly (fallback).
+        $by_post_id = get_post($search_term);
+        if ($by_post_id && $by_post_id->post_type === 'property') {
+            $query_args['post__in'] = array((int) $search_term);
+            unset($query_args['meta_query']);
+        }
+    } else {
+        $query_args['s'] = $search_term;
+    }
+}
+
+$query = new WP_Query($query_args);
 ?>
 
 <div class="wrap moaveze-properties-page">
@@ -63,6 +91,18 @@ $query = new WP_Query(array(
         </p>
     </div>
 
+    <form method="get" style="margin:16px 0;display:flex;gap:8px;align-items:center;">
+        <input type="hidden" name="page" value="moaveze-properties">
+        <input type="text" name="moaveze_property_search" value="<?php echo esc_attr($search_term); ?>"
+               placeholder="جستجو بر اساس عنوان یا کد آگهی (Listing ID)..." class="regular-text" style="min-width:320px;">
+        <button type="submit" class="button button-primary">
+            <span class="dashicons dashicons-search"></span> جستجو
+        </button>
+        <?php if ($search_term !== '') : ?>
+            <a href="<?php echo esc_url(admin_url('admin.php?page=moaveze-properties')); ?>" class="button">پاک کردن</a>
+        <?php endif; ?>
+    </form>
+
     <table class="wp-list-table widefat fixed striped">
         <thead>
             <tr>
@@ -79,6 +119,7 @@ $query = new WP_Query(array(
             <?php else : ?>
                 <?php while ($query->have_posts()) : $query->the_post();
                     $property_id = get_the_ID();
+                    $listing_code = get_post_meta($property_id, 'fave_property_id', true);
                     $price = get_post_meta($property_id, 'fave_property_price', true);
                     $exchange_id = get_post_meta($property_id, '_moaveze_exchange_linked', true);
                     $is_linked = $exchange_id && get_post($exchange_id);
@@ -92,6 +133,9 @@ $query = new WP_Query(array(
                     <tr data-property-row="<?php echo esc_attr($property_id); ?>">
                         <td>
                             <strong><a href="<?php echo esc_url(get_edit_post_link($property_id)); ?>"><?php the_title(); ?></a></strong>
+                            <?php if ($listing_code) : ?>
+                                <div style="color:#6366f1;font-size:12px;font-weight:600;">کد آگهی: <?php echo esc_html(Moaveze_Helpers::to_persian_digits($listing_code)); ?></div>
+                            <?php endif; ?>
                             <div class="row-actions">
                                 <span><a href="<?php echo esc_url(get_edit_post_link($property_id)); ?>">ویرایش</a> | </span>
                                 <span><a href="<?php echo esc_url(get_permalink($property_id)); ?>" target="_blank">مشاهده</a></span>
@@ -131,7 +175,7 @@ $query = new WP_Query(array(
     if ($total_pages > 1) :
         echo '<div class="tablenav"><div class="tablenav-pages">';
         echo paginate_links(array(
-            'base'    => add_query_arg('paged', '%#%'),
+            'base'    => add_query_arg(array('paged' => '%#%', 'moaveze_property_search' => $search_term)),
             'format'  => '',
             'current' => $paged,
             'total'   => $total_pages,

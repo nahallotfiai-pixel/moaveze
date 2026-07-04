@@ -370,13 +370,32 @@ class Moaveze_Meta_Fields {
         foreach ($all_terms as $term) {
             // Skip terms already covered by the core list.
             if (in_array($term->name, $core_names, true)) continue;
-            // Generate a safe, unique meta-key suffix from the term's
-            // slug (which WordPress already sanitized when the term was
-            // created). Replace hyphens with underscores so the meta
-            // key reads like _moaveze_some_feature rather than
-            // _moaveze_some-feature.
-            $key = str_replace('-', '_', $term->slug);
-            // Avoid collisions with the core English keys.
+
+            // ROOT-CAUSE FIX ("خطا در زدن تیک ویژگی جدید" persisting):
+            // this key used to be derived from the term's SLUG
+            // (str_replace('-','_', $term->slug)). For any Persian-
+            // language feature name (which covers essentially every
+            // custom feature an admin would actually add, e.g.
+            // "نگهبانی ۲۴ ساعته"), WordPress stores the slug as a raw
+            // percent-encoded UTF-8 string (e.g. "%d9%86%da%af..."). This
+            // is EXACTLY the same class of bug already root-caused and
+            // fixed for search/taxonomy dropdowns elsewhere in this
+            // plugin: jQuery's data-* attribute reader + $.post()'s
+            // $.param() serialization double-encodes a string that
+            // already contains "%XX" sequences (%d8 -> %25d8), so the
+            // value PHP receives in $_POST['feature_key'] never matches
+            // the original key - only the 6 CORE features (parking,
+            // elevator, ...), which use plain ASCII keys with no
+            // percent-encoding at all, ever worked reliably; every
+            // dynamically-added feature was affected.
+            //
+            // Fix: use the term's plain numeric ID (which has none of
+            // these encoding failure modes, exactly like every taxonomy
+            // <select> in this plugin was already switched to) as the
+            // meta-key suffix instead of anything slug-derived.
+            $key = 'term_' . $term->term_id;
+            // Avoid collisions with the core English keys (impossible
+            // by construction, but kept as a defensive guard).
             if (isset($core[$key])) continue;
             $core[$key] = $term->name;
         }

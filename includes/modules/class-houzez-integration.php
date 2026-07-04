@@ -120,9 +120,36 @@ class Moaveze_Houzez_Integration {
             ));
         }
 
-        $result = $this->import_single_property($property_id);
+        // ROOT-CAUSE FIX for "خطا در ارتباط با سرور" (generic AJAX
+        // failure with zero diagnostic info): a PHP fatal error OR even
+        // just a stray notice/warning printed by import_single_property()
+        // (e.g. an "Undefined array key" notice from a Houzez meta field
+        // that doesn't exist on THIS particular property, since not
+        // every listing has every custom field filled in) breaks the
+        // JSON response - PHP prints plain-text before the JSON, so the
+        // browser can no longer parse the response as JSON and jQuery's
+        // AJAX promise rejects into .fail(), which only ever shows the
+        // generic "خطا در ارتباط با سرور" with no indication of what
+        // actually went wrong on the server. Wrapping this in a
+        // try/catch + output-buffer turns ANY such failure into a
+        // proper, specific JSON error message instead - both fixing the
+        // "silently broken" symptom AND making the real cause visible
+        // and reportable next time, instead of guessing blind.
+        ob_start();
+        try {
+            $result = $this->import_single_property($property_id);
+        } catch (\Throwable $e) {
+            ob_end_clean();
+            wp_send_json_error('خطای PHP هنگام تبدیل: ' . $e->getMessage() . ' (فایل: ' . basename($e->getFile()) . ':' . $e->getLine() . ')');
+        }
+        $stray_output = ob_get_clean();
+
         if (!$result) {
-            wp_send_json_error('خطا در تبدیل ملک');
+            $msg = 'خطا در تبدیل ملک';
+            if ($stray_output !== '') {
+                $msg .= ' - جزئیات فنی: ' . wp_strip_all_tags($stray_output);
+            }
+            wp_send_json_error($msg);
         }
 
         $exchange_id = get_post_meta($property_id, '_moaveze_exchange_linked', true);
@@ -130,6 +157,10 @@ class Moaveze_Houzez_Integration {
             'message'  => 'ملک با موفقیت به آگهی معاوضه تبدیل شد',
             'edit_url' => get_edit_post_link($exchange_id, 'raw'),
             'view_url' => get_permalink($exchange_id),
+            // Surface any stray PHP notice/warning even on success, so
+            // it doesn't hide silently if the conversion "worked" but
+            // something non-fatal still went slightly wrong underneath.
+            'debug'    => $stray_output !== '' ? wp_strip_all_tags($stray_output) : null,
         ));
     }
 
@@ -261,8 +292,18 @@ class Moaveze_Houzez_Integration {
             wp_set_object_terms($exchange_id, $feature_names, 'moaveze_feature');
         }
 
-        // Gallery images (copy Houzez gallery attachment IDs)
-        $gallery_ids = get_post_meta($property_id, 'fave_property_images', false);
+        // Gallery images (copy Houzez gallery attachment IDs).
+        // FIX: Houzez stores the entire gallery as ONE meta row whose
+        // value is itself an array of attachment IDs (confirmed via the
+        // live REST API response for a real property) - NOT as one
+        // separate meta row per image. get_post_meta(..., false)
+        // therefore returned a nested array (an array containing one
+        // array), which would have written the wrong shape into
+        // _moaveze_gallery (every other place in this plugin that reads
+        // _moaveze_gallery expects a flat array of IDs - see
+        // set_post_thumbnail() call in class-submission-form.php).
+        $gallery_raw = get_post_meta($property_id, 'fave_property_images', true);
+        $gallery_ids = is_array($gallery_raw) ? array_map('absint', $gallery_raw) : array();
         if (!empty($gallery_ids)) {
             update_post_meta($exchange_id, '_moaveze_gallery', $gallery_ids);
         }
