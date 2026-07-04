@@ -33,6 +33,63 @@ class Moaveze_Houzez_Integration {
 
         // "تبدیل به آگهی معاوضه" meta box on Houzez property edit screen
         add_action('add_meta_boxes', array($this, 'add_send_to_exchange_metabox'));
+
+        // ROOT-CAUSE FIX for the persistent, undiagnosable "خطا در
+        // ارتباط با سرور" on the convert-to-exchange button: the
+        // browser's own DevTools Network tab (confirmed by the site
+        // owner) showed the POST to admin-ajax.php itself returning
+        // "400 Bad Request" - BEFORE our AJAX handler even runs. This
+        // is WordPress core's OWN behavior
+        // (wp-admin/admin-ajax.php: `if (empty($_REQUEST['action']))
+        // wp_die('0', '', array('response' => 400));`), meaning
+        // something between the click and the server is stripping/
+        // corrupting the POST body's 'action' field entirely - almost
+        // certainly a security plugin/WAF/proxy inspecting or rewriting
+        // AJAX POST bodies (the site has a dedicated "امنیت" admin menu
+        // item), which no amount of fixing OUR PHP code can work around
+        // since the request never reaches it. Rather than keep guessing
+        // at an opaque third-party interception layer, this button is
+        // now a plain GET link handled directly on admin_init - no
+        // jQuery, no admin-ajax.php, no POST body at all - which cannot
+        // be affected by this specific failure mode.
+        add_action('admin_init', array($this, 'handle_convert_via_link'));
+    }
+
+    /**
+     * Non-AJAX fallback: handles a plain GET link
+     * (?moaveze_convert_property=ID&_wpnonce=...) so the "تبدیل به
+     * معاوضه" action works even when POST-based admin-ajax.php requests
+     * are being intercepted/blocked before reaching this plugin's code
+     * (see the admin_init hookup above for the full diagnosis).
+     */
+    public function handle_convert_via_link() {
+        if (empty($_GET['moaveze_convert_property'])) return;
+
+        $property_id = absint($_GET['moaveze_convert_property']);
+        if (!$property_id || get_post_type($property_id) !== 'property') {
+            wp_die('شناسه ملک نامعتبر است. <a href="' . esc_url(admin_url('admin.php?page=moaveze-properties')) . '">بازگشت</a>');
+        }
+
+        if (!current_user_can('manage_options')) {
+            wp_die('دسترسی ندارید.');
+        }
+
+        check_admin_referer('moaveze_convert_property_' . $property_id);
+
+        $redirect_url = admin_url('admin.php?page=moaveze-properties');
+
+        // Already converted - just bounce back with a notice, no need
+        // to redo the work.
+        $existing_exchange_id = get_post_meta($property_id, '_moaveze_exchange_linked', true);
+        if ($existing_exchange_id && get_post($existing_exchange_id)) {
+            wp_safe_redirect(add_query_arg('moaveze_convert_notice', 'already', $redirect_url));
+            exit;
+        }
+
+        $result = $this->import_single_property($property_id);
+
+        wp_safe_redirect(add_query_arg('moaveze_convert_notice', $result ? 'success' : 'failed', $redirect_url));
+        exit;
     }
 
     /**

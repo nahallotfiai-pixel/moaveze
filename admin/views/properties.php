@@ -91,6 +91,21 @@ $query = new WP_Query($query_args);
         </p>
     </div>
 
+    <?php
+    // Result banner after a convert-via-link redirect (see
+    // Moaveze_Houzez_Integration::handle_convert_via_link()).
+    if (!empty($_GET['moaveze_convert_notice'])) {
+        $notice = sanitize_text_field($_GET['moaveze_convert_notice']);
+        if ($notice === 'success') {
+            echo '<div class="notice notice-success is-dismissible" style="padding:12px 16px;"><p>✅ ملک با موفقیت به آگهی معاوضه تبدیل شد.</p></div>';
+        } elseif ($notice === 'already') {
+            echo '<div class="notice notice-info is-dismissible" style="padding:12px 16px;"><p>ℹ️ این ملک قبلاً به معاوضه تبدیل شده بود.</p></div>';
+        } elseif ($notice === 'failed') {
+            echo '<div class="notice notice-error is-dismissible" style="padding:12px 16px;"><p>❌ تبدیل ملک ناموفق بود. اگر این خطا تکرار شد، لطفاً به تیم فنی اطلاع دهید.</p></div>';
+        }
+    }
+    ?>
+
     <form method="get" style="margin:16px 0;display:flex;gap:8px;align-items:center;">
         <input type="hidden" name="page" value="moaveze-properties">
         <input type="text" name="moaveze_property_search" value="<?php echo esc_attr($search_term); ?>"
@@ -155,10 +170,30 @@ $query = new WP_Query($query_args);
                                 <a href="<?php echo esc_url(get_edit_post_link($exchange_id)); ?>" class="button button-small">
                                     مشاهده آگهی معاوضه
                                 </a>
-                            <?php else : ?>
-                                <button type="button" class="button button-primary button-small moaveze-convert-to-exchange-btn" data-property-id="<?php echo esc_attr($property_id); ?>">
+                            <?php else :
+                                // ROOT-CAUSE FIX: this is now a plain GET
+                                // link (handled by
+                                // Moaveze_Houzez_Integration::handle_convert_via_link()
+                                // on admin_init) instead of an AJAX
+                                // button - see that method's comment for
+                                // the full diagnosis of why the AJAX
+                                // version was reliably returning "400
+                                // Bad Request" before ever reaching our
+                                // PHP code (likely a security plugin
+                                // intercepting POST bodies to
+                                // admin-ajax.php). A simple full-page GET
+                                // navigation cannot be affected by that
+                                // failure mode.
+                                $convert_url = wp_nonce_url(
+                                    add_query_arg('moaveze_convert_property', $property_id, admin_url('admin.php?page=moaveze-properties')),
+                                    'moaveze_convert_property_' . $property_id
+                                );
+                            ?>
+                                <a href="<?php echo esc_url($convert_url); ?>"
+                                   class="button button-primary button-small"
+                                   onclick="return confirm('آیا این ملک به آگهی معاوضه تبدیل شود؟ (تمام مشخصات، تصاویر و موقعیت ملک کپی خواهد شد)');">
                                     <span class="dashicons dashicons-randomize"></span> تبدیل به معاوضه
-                                </button>
+                                </a>
                             <?php endif; ?>
                             <a href="<?php echo esc_url(get_edit_post_link($property_id, 'raw') . '#moaveze_ai_valuation'); ?>" class="button button-small">
                                 <span class="dashicons dashicons-chart-line"></span> ارزش‌گذاری
