@@ -179,7 +179,12 @@ class Moaveze_Meta_Fields {
         check_ajax_referer('moaveze_admin_nonce', 'nonce');
 
         $post_id = absint($_POST['post_id'] ?? 0);
-        $key = sanitize_key($_POST['feature_key'] ?? '');
+        // BUG FIX: sanitize_key() strips all non-ASCII characters and
+        // lowercases, which destroys Persian-slug keys (the dynamic
+        // features have keys derived from their Persian term slug like
+        // "جنوبی" or "دویر"). sanitize_text_field() preserves them
+        // safely while still stripping tags/octets.
+        $key = sanitize_text_field($_POST['feature_key'] ?? '');
         $checked = !empty($_POST['checked']) && $_POST['checked'] !== 'false';
 
         if (!$post_id || !current_user_can('edit_post', $post_id)) {
