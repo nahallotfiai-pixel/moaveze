@@ -134,10 +134,63 @@
             });
 
             // Selecting a model from the dropdown fills the text input
-            // (which is what actually gets saved via register_setting()).
+            // AND saves it immediately via AJAX (see
+            // Moaveze_AI_Valuation::ajax_save_ai_model) - this used to
+            // rely purely on the big "ذخیره تنظیمات" form submit, which
+            // the site owner reported resulted in the field going blank
+            // again after saving. Saving instantly removes that entire
+            // failure mode; the value is still written into the visible
+            // text input too, so the normal settings-form save (if used)
+            // carries the same value.
             $(document).on('change', '.moaveze-ai-model-select', function () {
-                const $card = $(this).closest('.moaveze-ai-provider-card');
-                $card.find('.moaveze-ai-model-input').val($(this).val());
+                const $select = $(this);
+                const $card = $select.closest('.moaveze-ai-provider-card');
+                const $input = $card.find('.moaveze-ai-model-input');
+                const $status = $card.find('.moaveze-ai-models-status');
+                const provider = $input.data('provider');
+                const model = $select.val();
+
+                $input.val(model);
+                $status.text('در حال ذخیره مدل انتخاب‌شده...').css('color', '#64748b');
+
+                $.post(moavezeAdmin.ajaxUrl, {
+                    action: 'moaveze_save_ai_model',
+                    nonce: moavezeAdmin.nonce,
+                    provider: provider,
+                    model: model,
+                }, function (response) {
+                    if (response.success) {
+                        $input.val(response.data.saved_value);
+                        $status.text('✓ ' + response.data.message + ' (ذخیره شد و پس از رفرش صفحه هم باقی می‌ماند)').css('color', '#16a34a');
+                    } else {
+                        $status.text('✗ ' + (response.data || 'خطا در ذخیره مدل')).css('color', '#dc2626');
+                    }
+                }).fail(function () {
+                    $status.text('✗ خطا در ارتباط با سرور هنگام ذخیره مدل').css('color', '#dc2626');
+                });
+            });
+
+            // Typing a model name directly (without using the dropdown)
+            // also saves instantly on blur, for the same reason.
+            $(document).on('blur', '.moaveze-ai-model-input', function () {
+                const $input = $(this);
+                const provider = $input.data('provider');
+                const model = $input.val().trim();
+                if (!provider || !model) return;
+
+                const $card = $input.closest('.moaveze-ai-provider-card');
+                const $status = $card.find('.moaveze-ai-models-status');
+
+                $.post(moavezeAdmin.ajaxUrl, {
+                    action: 'moaveze_save_ai_model',
+                    nonce: moavezeAdmin.nonce,
+                    provider: provider,
+                    model: model,
+                }, function (response) {
+                    if (response.success) {
+                        $status.text('✓ مدل ذخیره شد').css('color', '#16a34a');
+                    }
+                });
             });
         },
 

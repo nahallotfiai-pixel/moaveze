@@ -100,6 +100,54 @@ class Moaveze_AI_Valuation {
         add_action('wp_ajax_moaveze_apply_valuation', array($this, 'ajax_apply_valuation'));
         add_action('wp_ajax_moaveze_test_ai_connection', array($this, 'ajax_test_ai_connection'));
         add_action('wp_ajax_moaveze_fetch_ai_models', array($this, 'ajax_fetch_ai_models'));
+        add_action('wp_ajax_moaveze_save_ai_model', array($this, 'ajax_save_ai_model'));
+    }
+
+    /**
+     * AJAX: instantly persist the model chosen from the dynamically-
+     * fetched list, the moment it's selected - independent of the big
+     * "ذخیره تنظیمات" settings form submit.
+     *
+     * WHY THIS EXISTS: the site owner reported that picking a model from
+     * the dynamic dropdown and then saving via the normal settings form
+     * resulted in the field being empty again after the page reloaded.
+     * Rather than leave that dependent on the full options.php
+     * settings-API round trip (multiple moving parts: the correct
+     * settings group nonce, the field being inside the <form>, the
+     * browser correctly serializing every input, etc.), this saves the
+     * exact same option (moaveze_ai_{provider}_model) directly and
+     * immediately - the same defensive pattern already used for the
+     * feature checkboxes (see Moaveze_Meta_Fields::ajax_toggle_feature).
+     * The value is also still written into the visible text field so
+     * the full settings form save (if used) carries the same value too.
+     */
+    public function ajax_save_ai_model() {
+        check_ajax_referer('moaveze_admin_nonce', 'nonce');
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('دسترسی ندارید');
+        }
+
+        $provider = sanitize_text_field($_POST['provider'] ?? '');
+        $model = sanitize_text_field($_POST['model'] ?? '');
+
+        $providers = self::get_providers();
+        if (!isset($providers[$provider])) {
+            wp_send_json_error('ارائه‌دهنده نامعتبر است');
+        }
+        if (!$model) {
+            wp_send_json_error('نام مدل نامعتبر است');
+        }
+
+        update_option("moaveze_ai_{$provider}_model", $model);
+
+        // Read back what's actually in the DB now, so the UI can prove
+        // (not just assume) the value really persisted.
+        $saved_value = get_option("moaveze_ai_{$provider}_model");
+
+        wp_send_json_success(array(
+            'message'     => 'مدل "' . $model . '" برای ' . $providers[$provider]['label'] . ' ذخیره شد',
+            'saved_value' => $saved_value,
+        ));
     }
 
     /**
