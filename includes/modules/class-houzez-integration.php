@@ -21,6 +21,12 @@ class Moaveze_Houzez_Integration {
         add_filter('manage_property_posts_columns', array($this, 'add_exchange_column'));
         add_action('manage_property_posts_custom_column', array($this, 'exchange_column_content'), 10, 2);
 
+        // Add "تبدیل به معاوضه" row action link in the properties list
+        // table (the row of links under each title: ویرایش | ویرایش
+        // سریع | ...) - the most discoverable, standard-WordPress-UI
+        // placement for per-row actions.
+        add_filter('post_row_actions', array($this, 'add_row_action_convert'), 10, 2);
+
         // "تبدیل به آگهی معاوضه" meta box on Houzez property edit screen
         add_action('add_meta_boxes', array($this, 'add_send_to_exchange_metabox'));
     }
@@ -373,11 +379,31 @@ class Moaveze_Houzez_Integration {
         if ($column !== 'moaveze_exchange') return;
 
         $exchange_id = get_post_meta($post_id, '_moaveze_exchange_linked', true);
-        if ($exchange_id) {
-            echo '<span class="dashicons dashicons-yes-alt" style="color:#10b981;" title="معاوضه فعال"></span>';
+        if ($exchange_id && get_post($exchange_id)) {
+            echo '<a href="' . esc_url(get_edit_post_link($exchange_id)) . '" class="dashicons dashicons-yes-alt" style="color:#10b981;text-decoration:none;" title="معاوضه فعال - کلیک برای ویرایش"></a>';
         } else {
-            echo '<button class="button button-small moaveze-add-to-exchange" data-property-id="' . esc_attr($post_id) . '">افزودن</button>';
+            echo '<button class="button button-small moaveze-convert-to-exchange-btn" data-property-id="' . esc_attr($post_id) . '" title="تبدیل به آگهی معاوضه">تبدیل به معاوضه</button>';
         }
+    }
+
+    /**
+     * Add "تبدیل به معاوضه" as a row-action link under each property
+     * title in the list table - the standard WordPress UI pattern that
+     * every admin knows where to look (under the post title, next to
+     * "ویرایش | ویرایش سریع | ...").
+     */
+    public function add_row_action_convert($actions, $post) {
+        if ($post->post_type !== 'property') return $actions;
+        if (!current_user_can('manage_options')) return $actions;
+
+        $exchange_id = get_post_meta($post->ID, '_moaveze_exchange_linked', true);
+        if ($exchange_id && get_post($exchange_id)) {
+            $actions['moaveze_exchange'] = '<a href="' . esc_url(get_edit_post_link($exchange_id)) . '" style="color:#10b981;font-weight:600;">✓ معاوضه</a>';
+        } else {
+            $actions['moaveze_exchange'] = '<a href="#" class="moaveze-convert-to-exchange-btn" data-property-id="' . esc_attr($post->ID) . '" style="color:#6366f1;font-weight:600;">تبدیل به معاوضه</a>';
+        }
+
+        return $actions;
     }
 }
 

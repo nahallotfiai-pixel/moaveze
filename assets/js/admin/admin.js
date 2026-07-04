@@ -25,7 +25,8 @@
          * moaveze_exchange post from the property's data.
          */
         initConvertToExchange() {
-            $(document).on('click', '.moaveze-send-to-exchange-btn', function() {
+            $(document).on('click', '.moaveze-send-to-exchange-btn, .moaveze-convert-to-exchange-btn', function(e) {
+                e.preventDefault();
                 const $btn = $(this);
                 const propertyId = $btn.data('property-id');
 
