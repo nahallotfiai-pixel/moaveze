@@ -605,6 +605,7 @@ class Moaveze_AI_Valuation {
     public function add_valuation_metabox() {
         if (!$this->current_user_is_staff()) return;
 
+        // Our own exchange listings
         add_meta_box(
             'moaveze_ai_valuation',
             'ارزش‌گذاری ملک (فقط مشاوران تبریز هوم)',
@@ -613,6 +614,23 @@ class Moaveze_AI_Valuation {
             'normal',
             'high'
         );
+
+        // Houzez theme's property listings - same AI valuation
+        // capability, reading from fave_property_* meta fields and
+        // property_type/property_area/property_feature taxonomies
+        // instead of our own moaveze_* ones. Per explicit user
+        // request: "ارزش گذاری روی موارد فروش در سایتمون که با پست
+        // تایپ property هستند هم اجرا شود".
+        if (post_type_exists('property')) {
+            add_meta_box(
+                'moaveze_ai_valuation',
+                'ارزش‌گذاری ملک (فقط مشاوران تبریز هوم)',
+                array($this, 'render_valuation_metabox'),
+                'property',
+                'normal',
+                'high'
+            );
+        }
     }
 
     /**
@@ -621,19 +639,49 @@ class Moaveze_AI_Valuation {
      */
     public function render_valuation_metabox($post) {
         global $wpdb;
-        $exchange = $wpdb->get_row($wpdb->prepare(
-            "SELECT * FROM {$wpdb->prefix}moaveze_exchanges WHERE post_id = %d", $post->ID
-        ));
+
+        // For Houzez 'property' posts, we don't have a moaveze_exchanges
+        // table row - build a lightweight object with the same fields
+        // the rest of this metabox/AI-prompt expects, reading from
+        // Houzez's own fave_property_* meta keys and taxonomies.
+        if ($post->post_type === 'property') {
+            $exchange = (object) array(
+                'id'             => 0, // no exchange table row
+                'post_id'        => $post->ID,
+                'property_value' => (int) get_post_meta($post->ID, 'fave_property_price', true),
+                'area_sqm'       => (int) get_post_meta($post->ID, 'fave_property_size', true),
+                'district'       => '',
+                'property_type'  => '',
+            );
+            // Resolve district from Houzez's property_area taxonomy
+            $area_terms = get_the_terms($post->ID, 'property_area');
+            if ($area_terms && !is_wp_error($area_terms)) {
+                $exchange->district = $area_terms[0]->name;
+            }
+            // Resolve property type from Houzez's property_type taxonomy
+            $type_terms = get_the_terms($post->ID, 'property_type');
+            if ($type_terms && !is_wp_error($type_terms)) {
+                $exchange->property_type = $type_terms[0]->name;
+            }
+        } else {
+            $exchange = $wpdb->get_row($wpdb->prepare(
+                "SELECT * FROM {$wpdb->prefix}moaveze_exchanges WHERE post_id = %d", $post->ID
+            ));
+        }
 
         $ai_enabled = get_option('moaveze_ai_valuation_enabled') === 'yes';
         $active_provider = get_option('moaveze_ai_active_provider', 'gemini');
         $providers = self::get_providers();
         $provider_ready = $ai_enabled && get_option("moaveze_ai_{$active_provider}_enabled") === 'yes';
 
-        $history = $exchange ? $wpdb->get_results($wpdb->prepare(
-            "SELECT * FROM {$wpdb->prefix}moaveze_valuations WHERE exchange_id = %d ORDER BY created_at DESC LIMIT 10",
-            $exchange->id
-        )) : array();
+        // Query valuation history by post_id (works for BOTH
+        // moaveze_exchange posts and Houzez 'property' posts, since
+        // post_id is always set correctly in the valuations table
+        // regardless of whether exchange_id is 0 or a real row ID).
+        $history = $wpdb->get_results($wpdb->prepare(
+            "SELECT * FROM {$wpdb->prefix}moaveze_valuations WHERE post_id = %d ORDER BY created_at DESC LIMIT 10",
+            $post->ID
+        ));
 
         wp_nonce_field('moaveze_valuation', 'moaveze_valuation_nonce');
         ?>
@@ -899,11 +947,26 @@ class Moaveze_AI_Valuation {
         }
 
         $exchange_id = absint($_POST['exchange_id'] ?? 0);
+        $post_id = absint($_POST['post_id'] ?? 0);
         global $wpdb;
-        $exchange = $wpdb->get_row($wpdb->prepare(
-            "SELECT * FROM {$wpdb->prefix}moaveze_exchanges WHERE id = %d", $exchange_id
-        ));
-        if (!$exchange) wp_send_json_error('آگهی یافت نشد');
+
+        // Support BOTH our own moaveze_exchange posts (looked up by
+        // exchange_id from the exchanges table) AND Houzez 'property'
+        // posts (no exchange table row - build an equivalent object
+        // on-the-fly from fave_property_* meta, same as
+        // render_valuation_metabox() does). Per explicit user request:
+        // "ارزش گذاری روی موارد فروش در سایتمون هم اجرا شود".
+        if ($exchange_id) {
+            $exchange = $wpdb->get_row($wpdb->prepare(
+                "SELECT * FROM {$wpdb->prefix}moaveze_exchanges WHERE id = %d", $exchange_id
+            ));
+            if (!$exchange) wp_send_json_error('آگهی یافت نشد');
+        } elseif ($post_id && get_post_type($post_id) === 'property') {
+            // Houzez property - build a lightweight exchange-like object
+            $exchange = $this->build_houzez_exchange_object($post_id);
+        } else {
+            wp_send_json_error('آگهی یافت نشد');
+        }
 
         $provider = get_option('moaveze_ai_active_provider', 'gemini');
         if (get_option("moaveze_ai_{$provider}_enabled") !== 'yes') {
@@ -1007,6 +1070,38 @@ class Moaveze_AI_Valuation {
     }
 
     /**
+     * Build a lightweight exchange-like object from a Houzez 'property'
+     * post's meta fields, so the rest of this module (prompt builder,
+     * DB storage, metabox rendering) can work identically without
+     * needing to know which post type they're operating on. Maps
+     * Houzez's fave_property_* meta keys and property_type/
+     * property_area/property_feature taxonomies to the same field
+     * names used by moaveze_exchanges.
+     */
+    private function build_houzez_exchange_object($post_id) {
+        $exchange = (object) array(
+            'id'             => 0,
+            'post_id'        => $post_id,
+            'property_value' => (int) get_post_meta($post_id, 'fave_property_price', true),
+            'area_sqm'       => (int) get_post_meta($post_id, 'fave_property_size', true),
+            'district'       => '',
+            'property_type'  => '',
+        );
+
+        $area_terms = get_the_terms($post_id, 'property_area');
+        if ($area_terms && !is_wp_error($area_terms)) {
+            $exchange->district = $area_terms[0]->name;
+        }
+
+        $type_terms = get_the_terms($post_id, 'property_type');
+        if ($type_terms && !is_wp_error($type_terms)) {
+            $exchange->property_type = $type_terms[0]->name;
+        }
+
+        return $exchange;
+    }
+
+    /**
      * Resolve the listing's district/property-type as reliably as
      * possible, with a defensive fallback chain:
      *   1. moaveze_exchanges.district / .property_type columns (now
@@ -1023,8 +1118,17 @@ class Moaveze_AI_Valuation {
      *      often actually empty at the time.
      */
     private function resolve_district_and_type($exchange) {
-        $district_terms = get_the_terms($exchange->post_id, 'moaveze_district');
-        $type_terms = get_the_terms($exchange->post_id, 'moaveze_property_type');
+        $post_type = get_post_type($exchange->post_id);
+
+        // Use Houzez taxonomies for 'property' posts, our own for
+        // 'moaveze_exchange' posts.
+        if ($post_type === 'property') {
+            $district_terms = get_the_terms($exchange->post_id, 'property_area');
+            $type_terms = get_the_terms($exchange->post_id, 'property_type');
+        } else {
+            $district_terms = get_the_terms($exchange->post_id, 'moaveze_district');
+            $type_terms = get_the_terms($exchange->post_id, 'moaveze_property_type');
+        }
 
         $district = $exchange->district ?: '';
         if (!$district && $district_terms && !is_wp_error($district_terms)) {
@@ -1054,21 +1158,30 @@ class Moaveze_AI_Valuation {
      */
     private function build_valuation_prompt($exchange) {
         $resolved = $this->resolve_district_and_type($exchange);
-        $feature_terms = wp_get_post_terms($exchange->post_id, 'moaveze_feature', array('fields' => 'names'));
-        $year_built = get_post_meta($exchange->post_id, '_moaveze_year_built', true);
-        $rooms = get_post_meta($exchange->post_id, '_moaveze_rooms', true);
-        $floor = get_post_meta($exchange->post_id, '_moaveze_floor', true);
-        $total_floors = get_post_meta($exchange->post_id, '_moaveze_total_floors', true);
-        $address = get_post_meta($exchange->post_id, '_moaveze_address', true);
-        // Real geo-coordinates saved on the listing (map picker /
-        // Houzez import) - per explicit user request ("موقعیت
-        // جغرافیایی ثبت شده در آگهی هم در قیمت گذاری قید شود"), these
-        // are now included so the AI can reason about the EXACT
-        // micro-location within the district, not just the district
-        // name, and (when grounding is enabled) search near these
-        // coordinates specifically.
-        $lat = get_post_meta($exchange->post_id, '_moaveze_latitude', true);
-        $lng = get_post_meta($exchange->post_id, '_moaveze_longitude', true);
+        $post_id = $exchange->post_id;
+        $post_type = get_post_type($post_id);
+
+        // Read meta from the correct source: Houzez fave_property_*
+        // for 'property' posts, our own _moaveze_* for exchanges.
+        if ($post_type === 'property') {
+            $feature_terms = wp_get_post_terms($post_id, 'property_feature', array('fields' => 'names'));
+            $year_built = get_post_meta($post_id, 'fave_property_year', true);
+            $rooms = get_post_meta($post_id, 'fave_property_rooms', true);
+            $floor = get_post_meta($post_id, 'fave_f5eb6c866568d9', true); // Houzez custom floor field
+            $total_floors = ''; // Houzez stores floor as "X از Y" in a single field
+            $address = get_post_meta($post_id, 'fave_property_map_address', true);
+            $lat = get_post_meta($post_id, 'fave_property_map_latitude', true);
+            $lng = get_post_meta($post_id, 'fave_property_map_longitude', true);
+        } else {
+            $feature_terms = wp_get_post_terms($post_id, 'moaveze_feature', array('fields' => 'names'));
+            $year_built = get_post_meta($post_id, '_moaveze_year_built', true);
+            $rooms = get_post_meta($post_id, '_moaveze_rooms', true);
+            $floor = get_post_meta($post_id, '_moaveze_floor', true);
+            $total_floors = get_post_meta($post_id, '_moaveze_total_floors', true);
+            $address = get_post_meta($post_id, '_moaveze_address', true);
+            $lat = get_post_meta($post_id, '_moaveze_latitude', true);
+            $lng = get_post_meta($post_id, '_moaveze_longitude', true);
+        }
         $area = (int) $exchange->area_sqm;
         $owner_value = (int) $exchange->property_value;
         $owner_price_per_sqm = $area > 0 ? round($owner_value / $area) : 0;

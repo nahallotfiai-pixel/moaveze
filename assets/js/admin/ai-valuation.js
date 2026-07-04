@@ -237,6 +237,7 @@
                     action: 'moaveze_run_ai_valuation',
                     nonce: $('#moaveze_valuation_nonce').val(),
                     exchange_id: $box.data('exchange-id'),
+                    post_id: $box.data('post-id'),
                 }, function (response) {
                     $btn.prop('disabled', false).html('<span class="dashicons dashicons-superhero-alt"></span> دریافت پیشنهاد هوش مصنوعی');
 

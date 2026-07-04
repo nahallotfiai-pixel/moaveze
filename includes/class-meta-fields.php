@@ -313,8 +313,35 @@ class Moaveze_Meta_Fields {
      * checkboxes (to read the correct checked state whether the listing
      * was created via wp-admin or via the frontend submission form).
      */
+    /**
+     * Maps feature meta-field keys to their Persian taxonomy term
+     * names. This is used both when SAVING (to sync checkboxes ->
+     * moaveze_feature terms) and when RENDERING the admin checkboxes
+     * (to read the correct checked state).
+     *
+     * BUG FIX ("وقتی ویژگی جدید اضافه میکنیم روی ملک ثبت نمیشه"):
+     * this was previously a HARDCODED static array of only 6 specific
+     * features (parking, elevator, storage, balcony, pool, security).
+     * If the admin added a new feature via wp-admin's taxonomy manager
+     * (e.g. "لابی", "سونا"), it was NOT in this map, so no checkbox
+     * appeared for it, save_meta() never synced it, and toggle_feature
+     * AJAX rejected it as "ویژگی نامعتبر". NOW: dynamically reads ALL
+     * existing moaveze_feature taxonomy terms and builds the map from
+     * them, so any new term added via wp-admin is automatically
+     * available as a checkbox in the metabox, instantly sync-able, and
+     * rendered on the frontend - no code change needed to add features.
+     *
+     * The key in the returned array is a sanitized slug-like string
+     * (sanitize_title of the Persian name, with hyphens converted to
+     * underscores for use as a meta key suffix), and the value is the
+     * term's actual Persian display name.
+     */
     private static function get_feature_taxonomy_map() {
-        return array(
+        // Core features that always exist (seeded on activation) -
+        // these keep their original English keys for backward
+        // compatibility with all existing code that reads
+        // _moaveze_parking, _moaveze_elevator, etc.
+        $core = array(
             'parking'  => 'پارکینگ',
             'elevator' => 'آسانسور',
             'storage'  => 'انباری',
@@ -322,6 +349,34 @@ class Moaveze_Meta_Fields {
             'pool'     => 'استخر',
             'security' => 'نگهبانی',
         );
+
+        // Dynamically add ANY other moaveze_feature terms that exist
+        // in the DB but aren't in the core list above (= terms added
+        // by the admin via wp-admin > معاوضه پلاس > ویژگی‌ها).
+        $all_terms = get_terms(array(
+            'taxonomy'   => 'moaveze_feature',
+            'hide_empty' => false,
+        ));
+        if (is_wp_error($all_terms) || empty($all_terms)) {
+            return $core;
+        }
+
+        $core_names = array_values($core);
+        foreach ($all_terms as $term) {
+            // Skip terms already covered by the core list.
+            if (in_array($term->name, $core_names, true)) continue;
+            // Generate a safe, unique meta-key suffix from the term's
+            // slug (which WordPress already sanitized when the term was
+            // created). Replace hyphens with underscores so the meta
+            // key reads like _moaveze_some_feature rather than
+            // _moaveze_some-feature.
+            $key = str_replace('-', '_', $term->slug);
+            // Avoid collisions with the core English keys.
+            if (isset($core[$key])) continue;
+            $core[$key] = $term->name;
+        }
+
+        return $core;
     }
 
     /**
@@ -330,11 +385,27 @@ class Moaveze_Meta_Fields {
     public static function render_property_details_box($post) {
         wp_nonce_field('moaveze_save_meta', 'moaveze_meta_nonce');
         $fields = self::get_fields();
-        $property_fields = array(
-            'property_value', 'area_sqm', 'rooms', 'floor',
-            'total_floors', 'year_built', 'parking', 'elevator',
-            'storage', 'balcony', 'pool', 'security', 'latitude', 'longitude', 'address'
+
+        // Build the list of fields to render dynamically - starts with
+        // the fixed non-feature fields, then appends ALL feature keys
+        // from the (now-dynamic) taxonomy map so any new feature added
+        // via wp-admin automatically gets a checkbox here without
+        // needing a code change.
+        $feature_map = self::get_feature_taxonomy_map();
+        $property_fields = array_merge(
+            array('property_value', 'area_sqm', 'rooms', 'floor', 'total_floors', 'year_built'),
+            array_keys($feature_map),
+            array('latitude', 'longitude', 'address')
         );
+
+        // Ensure every dynamic feature key has a field definition in
+        // $fields (the core 6 already do from get_fields(), but any
+        // new ones won't - add them on the fly as checkboxes).
+        foreach ($feature_map as $key => $label) {
+            if (!isset($fields[$key])) {
+                $fields[$key] = array('type' => 'checkbox', 'label' => $label);
+            }
+        }
 
         // Listings created via the frontend form only ever set the
         // moaveze_feature TAXONOMY terms, never the individual
@@ -638,6 +709,18 @@ class Moaveze_Meta_Fields {
         }
 
         $fields = self::get_fields();
+
+        // Ensure dynamically-added features (terms created via
+        // wp-admin taxonomy manager) are also saved correctly when
+        // using the normal "Update" button (not just the instant-AJAX
+        // toggle) - add them to $fields on the fly, same as
+        // render_property_details_box() does for rendering.
+        $feature_map = self::get_feature_taxonomy_map();
+        foreach ($feature_map as $key => $label) {
+            if (!isset($fields[$key])) {
+                $fields[$key] = array('type' => 'checkbox', 'label' => $label);
+            }
+        }
 
         foreach ($fields as $key => $field) {
             $name = 'moaveze_' . $key;
