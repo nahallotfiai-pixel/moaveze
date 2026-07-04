@@ -242,6 +242,8 @@ class Moaveze_Database {
             comparables longtext DEFAULT NULL,
             raw_response longtext DEFAULT NULL,
             manual_value bigint(20) DEFAULT NULL,
+            manual_min_value bigint(20) DEFAULT NULL,
+            manual_max_value bigint(20) DEFAULT NULL,
             manual_notes text DEFAULT NULL,
             status varchar(20) NOT NULL DEFAULT 'pending',
             created_by bigint(20) unsigned DEFAULT NULL,

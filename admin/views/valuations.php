@@ -103,13 +103,17 @@ foreach ($rows as $r) {
             <?php else : ?>
                 <?php foreach ($rows as $row) :
                     $owner_value = get_post_meta($row->post_id, '_moaveze_property_value', true);
+                    $expert_value = get_post_meta($row->post_id, '_moaveze_expert_value', true);
                     $edit_link = get_edit_post_link($row->post_id, 'raw') . '#moaveze_ai_valuation';
                     ?>
                     <tr>
                         <td><strong><?php echo esc_html($row->post_title); ?></strong></td>
                         <td><?php echo esc_html(Moaveze_Helpers::short_price($owner_value)); ?></td>
                         <td>
-                            <?php if (!$row->valuation_id) : ?>
+                            <?php if ($expert_value) : ?>
+                                <strong style="color:#4338ca;"><?php echo esc_html(Moaveze_Helpers::short_price($expert_value)); ?></strong>
+                                <span style="color:#94a3b8;font-size:11px;"> (منتشرشده روی آگهی)</span>
+                            <?php elseif (!$row->valuation_id) : ?>
                                 <span style="color:#94a3b8;">— هنوز ارزش‌گذاری نشده —</span>
                             <?php else : ?>
                                 <?php
@@ -119,13 +123,14 @@ foreach ($rows as $r) {
                                     ? ' <span class="vh-type ai">🤖 (' . esc_html($providers[$row->ai_provider]['label'] ?? $row->ai_provider) . ')</span>'
                                     : ' <span class="vh-type manual">👤 دستی</span>';
                                 ?>
+                                <span style="color:#94a3b8;font-size:11px;"> (پیش‌نویس - هنوز منتشر نشده)</span>
                             <?php endif; ?>
                         </td>
                         <td>
                             <?php if (!$row->valuation_id) : ?>
                                 <span class="moaveze-badge" style="background:#f1f5f9;color:#64748b;">بدون ارزش‌گذاری</span>
                             <?php elseif ($row->v_status === 'applied') : ?>
-                                <span class="moaveze-badge moaveze-badge-success" style="background:#d1fae5;color:#065f46;padding:4px 10px;border-radius:20px;font-size:11px;">✓ اعمال شده</span>
+                                <span class="moaveze-badge moaveze-badge-success" style="background:#d1fae5;color:#065f46;padding:4px 10px;border-radius:20px;font-size:11px;">✓ منتشر شده روی آگهی</span>
                             <?php else : ?>
                                 <span class="moaveze-badge moaveze-badge-warning" style="background:#fef3c7;color:#92400e;padding:4px 10px;border-radius:20px;font-size:11px;">در انتظار تأیید</span>
                             <?php endif; ?>

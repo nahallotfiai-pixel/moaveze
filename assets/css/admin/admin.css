@@ -798,6 +798,22 @@
 .ai-provider-fields .moaveze-field label { display: block; font-size: 12px; font-weight: 600; margin-bottom: 4px; }
 .ai-provider-fields .moaveze-field input { width: 100%; }
 
+.moaveze-feature-debug-box {
+    background: #f0f9ff;
+    border: 1px dashed #7dd3fc;
+    border-radius: 8px;
+    padding: 12px 14px;
+    margin-top: 14px;
+    font-size: 13px;
+}
+.moaveze-feature-debug-box .description { margin: 6px 0 0; color: #64748b; }
+.moaveze-instant-save-status { display: inline-block; min-width: 18px; vertical-align: middle; }
+
+.moaveze-ai-fetch-models-btn { margin-right: 8px; vertical-align: middle; }
+.moaveze-ai-fetch-models-btn .dashicons.moaveze-spin { animation: moaveze-spin 1s linear infinite; }
+@keyframes moaveze-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+.moaveze-ai-models-status { min-height: 18px; font-size: 12px; }
+
 .moaveze-ai-bypass-grid {
     display: grid;
     grid-template-columns: repeat(2, 1fr);

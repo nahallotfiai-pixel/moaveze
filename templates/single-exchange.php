@@ -32,6 +32,15 @@ $featured = get_post_meta($post_id, '_moaveze_featured', true);
 $gallery = get_post_meta($post_id, '_moaveze_gallery', true);
 $alt_conditions = get_post_meta($post_id, '_moaveze_alt_conditions', true);
 
+// Expert/AI valuation ("قیمت کارشناسی") - ALWAYS a separate figure from
+// the owner's own declared price above; never overwrites $value. Only
+// rendered if a consultant has explicitly "applied" a valuation via the
+// staff-only AI Valuation metabox (see class-ai-valuation.php).
+$expert_value = get_post_meta($post_id, '_moaveze_expert_value', true);
+$expert_min = get_post_meta($post_id, '_moaveze_expert_min', true);
+$expert_max = get_post_meta($post_id, '_moaveze_expert_max', true);
+$expert_value_type = get_post_meta($post_id, '_moaveze_expert_value_type', true);
+
 $type_terms = get_the_terms($post_id, 'moaveze_property_type');
 $district_terms = get_the_terms($post_id, 'moaveze_district');
 $feature_terms = get_the_terms($post_id, 'moaveze_feature');
@@ -243,6 +252,34 @@ $feature_icons = array(
                     </div>
                 </div>
 
+
+                <!-- Expert/AI Valuation ("قیمت کارشناسی") - always a SEPARATE
+                     card from the owner's own price above, never a
+                     replacement for it. -->
+                <?php if ($expert_value) : ?>
+                    <div class="moaveze-section-card moaveze-expert-valuation-card">
+                        <h3 class="section-title">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l9 4.5v9L12 20l-9-4.5v-9z"/><path d="M12 8v8M8 10l4-2 4 2"/></svg>
+                            قیمت کارشناسی تبریز هوم
+                        </h3>
+                        <div class="expert-valuation-box">
+                            <div class="expert-valuation-value">
+                                <?php echo esc_html(Moaveze_Helpers::short_price($expert_value)); ?>
+                                <span class="expert-valuation-badge">
+                                    <?php echo $expert_value_type === 'ai' ? '🤖 پیشنهاد هوش مصنوعی، تأییدشده توسط مشاور' : '👤 نظر کارشناسی مشاور'; ?>
+                                </span>
+                            </div>
+                            <?php if ($expert_min && $expert_max) : ?>
+                                <div class="expert-valuation-range">
+                                    محدوده منطقی: <?php echo esc_html(Moaveze_Helpers::short_price($expert_min)); ?> تا <?php echo esc_html(Moaveze_Helpers::short_price($expert_max)); ?>
+                                </div>
+                            <?php endif; ?>
+                            <p class="expert-valuation-note">
+                                این مقدار نظر کارشناسی تیم تبریز هوم است و جایگزین «ارزش ملک» ثبت‌شده توسط مالک (بالای صفحه) نمی‌شود؛ صرفاً برای مقایسه و کمک به تصمیم‌گیری شما ارائه شده است.
+                            </p>
+                        </div>
+                    </div>
+                <?php endif; ?>
 
                 <!-- Features -->
                 <?php if ($feature_terms && !is_wp_error($feature_terms) && !empty($feature_terms)) : ?>

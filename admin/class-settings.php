@@ -526,11 +526,19 @@ class Moaveze_Settings {
                     <?php endif; ?>
                     <div class="moaveze-field">
                         <label>آدرس API <?php echo $key === 'custom' ? '(الزامی)' : '(اختیاری - در صورت خالی بودن از مقدار پیش‌فرض استفاده می‌شود)'; ?></label>
-                        <input type="text" name="moaveze_ai_<?php echo esc_attr($key); ?>_url" value="<?php echo esc_attr(get_option("moaveze_ai_{$key}_url")); ?>" class="regular-text" dir="ltr" placeholder="<?php echo esc_attr($p['default_url']); ?>">
+                        <input type="text" class="moaveze-ai-url-input" name="moaveze_ai_<?php echo esc_attr($key); ?>_url" value="<?php echo esc_attr(get_option("moaveze_ai_{$key}_url")); ?>" class="regular-text" dir="ltr" placeholder="<?php echo esc_attr($p['default_url']); ?>">
                     </div>
                     <div class="moaveze-field">
-                        <label>مدل</label>
-                        <input type="text" name="moaveze_ai_<?php echo esc_attr($key); ?>_model" value="<?php echo esc_attr(get_option("moaveze_ai_{$key}_model")); ?>" class="regular-text" dir="ltr" placeholder="<?php echo esc_attr($p['default_model']); ?>">
+                        <label>
+                            مدل
+                            <button type="button" class="button button-small moaveze-ai-fetch-models-btn" data-provider="<?php echo esc_attr($key); ?>">
+                                <span class="dashicons dashicons-update"></span> دریافت لیست مدل‌های موجود
+                            </button>
+                        </label>
+                        <input type="text" class="regular-text moaveze-ai-model-input" name="moaveze_ai_<?php echo esc_attr($key); ?>_model" value="<?php echo esc_attr(get_option("moaveze_ai_{$key}_model")); ?>" dir="ltr" placeholder="<?php echo esc_attr($p['default_model']); ?>">
+                        <select class="moaveze-ai-model-select" style="display:none;margin-top:6px;width:100%;" dir="ltr"></select>
+                        <p class="moaveze-ai-models-status description"></p>
+                        <p class="description">با کلیک روی «دریافت لیست مدل‌های موجود»، مدل‌های واقعاً در دسترس این حساب به همراه وضعیت رایگان/پولی یا هزینه تقریبی نمایش داده می‌شود.</p>
                     </div>
                 </div>
             </div>

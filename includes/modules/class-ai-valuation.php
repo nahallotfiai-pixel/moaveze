@@ -99,6 +99,257 @@ class Moaveze_AI_Valuation {
         add_action('wp_ajax_moaveze_save_manual_valuation', array($this, 'ajax_save_manual_valuation'));
         add_action('wp_ajax_moaveze_apply_valuation', array($this, 'ajax_apply_valuation'));
         add_action('wp_ajax_moaveze_test_ai_connection', array($this, 'ajax_test_ai_connection'));
+        add_action('wp_ajax_moaveze_fetch_ai_models', array($this, 'ajax_fetch_ai_models'));
+    }
+
+    /**
+     * Static hints used to label fetched models as رایگان (free) /
+     * پولی (paid) / cost-per-token where the provider's own API doesn't
+     * return that info directly (e.g. OpenAI's /v1/models endpoint has
+     * no pricing field at all). Matched by substring against the
+     * model's id, longest/most-specific match wins implicitly because
+     * we check in array order. This is intentionally best-effort - the
+     * "test اتصال" button and each model's raw id are always shown too,
+     * so nothing is ever hidden from the site owner.
+     */
+    private static function get_model_pricing_hints() {
+        return array(
+            // Gemini - Google grants a genuinely free daily quota for
+            // "flash"/"flash-lite" models; "pro" models are paid-only.
+            'gemini-1.5-flash'   => 'رایگان (سهمیه روزانه Google)',
+            'gemini-1.5-pro'     => 'پولی',
+            'gemini-2.0-flash'   => 'رایگان (سهمیه روزانه Google)',
+            'gemini-2.0-pro'     => 'پولی',
+            'gemini-2.5-flash'   => 'رایگان (سهمیه روزانه Google)',
+            'gemini-2.5-pro'     => 'پولی',
+            // OpenAI - never free via API.
+            'gpt-4o-mini'        => 'پولی (ارزان)',
+            'gpt-4o'             => 'پولی',
+            'gpt-4-turbo'        => 'پولی',
+            'gpt-3.5-turbo'      => 'پولی (ارزان)',
+            'o1-mini'            => 'پولی',
+            'o1'                 => 'پولی (گران)',
+        );
+    }
+
+    /**
+     * AJAX: dynamically fetch the list of models actually available for
+     * a provider right now (per explicit user request: "هر مدلی که زده
+     * میشه داینامیک مدل های موجود بارگذاری بشه ... رایگان و غیر رایگان
+     * بودنش مشخص بشه یا مصرف کردیتش"). Uses the API key/account id the
+     * admin has typed into the settings form (even if not saved yet),
+     * so they can test before hitting "ذخیره تنظیمات".
+     */
+    public function ajax_fetch_ai_models() {
+        check_ajax_referer('moaveze_admin_nonce', 'nonce');
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error('دسترسی ندارید');
+        }
+
+        $provider = sanitize_text_field($_POST['provider'] ?? '');
+        $api_key = sanitize_text_field($_POST['api_key'] ?? '');
+        $account_id = sanitize_text_field($_POST['account_id'] ?? '');
+        $url_override = sanitize_text_field($_POST['url'] ?? '');
+
+        $providers = self::get_providers();
+        if (!isset($providers[$provider])) {
+            wp_send_json_error('ارائه‌دهنده نامعتبر است');
+        }
+
+        // Fall back to the already-saved key/account if the admin didn't
+        // type a new one into the (password-masked) field.
+        if (!$api_key) $api_key = get_option("moaveze_ai_{$provider}_api_key");
+        if (!$account_id) $account_id = get_option('moaveze_ai_cloudflare_ai_account_id');
+
+        $result = $this->fetch_models_for_provider($provider, $api_key, $account_id, $url_override);
+
+        if (!$result['success']) {
+            wp_send_json_error($result['error']);
+        }
+
+        wp_send_json_success(array('models' => $result['models']));
+    }
+
+    /**
+     * Provider-specific model-listing logic. Returns
+     * ['success' => bool, 'models' => [['id','label','pricing_note','is_free'], ...], 'error' => string].
+     */
+    private function fetch_models_for_provider($provider, $api_key, $account_id, $url_override) {
+        $hints = self::get_model_pricing_hints();
+        $note_for = function ($model_id) use ($hints) {
+            foreach ($hints as $needle => $note) {
+                if (stripos($model_id, $needle) !== false) return $note;
+            }
+            return 'هزینه نامشخص - قبل از استفاده تست کنید';
+        };
+
+        switch ($provider) {
+            case 'gemini':
+                if (!$api_key) return array('success' => false, 'models' => array(), 'error' => 'ابتدا کلید API را وارد کنید');
+                $response = wp_remote_get(
+                    'https://generativelanguage.googleapis.com/v1beta/models?key=' . rawurlencode($api_key),
+                    $this->http_args()
+                );
+                if (is_wp_error($response)) return array('success' => false, 'models' => array(), 'error' => $response->get_error_message());
+                $body = json_decode(wp_remote_retrieve_body($response), true);
+                if (empty($body['models'])) {
+                    return array('success' => false, 'models' => array(), 'error' => $body['error']['message'] ?? 'پاسخ نامعتبر از Gemini');
+                }
+                $models = array();
+                foreach ($body['models'] as $m) {
+                    if (empty($m['name']) || !str_contains($m['name'], 'gemini')) continue;
+                    // supportedGenerationMethods should include generateContent
+                    if (!empty($m['supportedGenerationMethods']) && !in_array('generateContent', $m['supportedGenerationMethods'], true)) continue;
+                    $id = str_replace('models/', '', $m['name']);
+                    $note = $note_for($id);
+                    $models[] = array(
+                        'id' => $id,
+                        'label' => ($m['displayName'] ?? $id),
+                        'pricing_note' => $note,
+                        'is_free' => (stripos($note, 'رایگان') === 0),
+                    );
+                }
+                return array('success' => true, 'models' => $models, 'error' => '');
+
+            case 'chatgpt':
+                if (!$api_key) return array('success' => false, 'models' => array(), 'error' => 'ابتدا کلید API را وارد کنید');
+                $response = wp_remote_get('https://api.openai.com/v1/models', $this->http_args(array(
+                    'headers' => array('Authorization' => 'Bearer ' . $api_key),
+                )));
+                if (is_wp_error($response)) return array('success' => false, 'models' => array(), 'error' => $response->get_error_message());
+                $body = json_decode(wp_remote_retrieve_body($response), true);
+                if (empty($body['data'])) {
+                    return array('success' => false, 'models' => array(), 'error' => $body['error']['message'] ?? 'پاسخ نامعتبر از OpenAI');
+                }
+                $models = array();
+                foreach ($body['data'] as $m) {
+                    $id = $m['id'] ?? '';
+                    // Only chat-capable model families - filter out
+                    // embeddings/whisper/tts/dall-e/moderation noise.
+                    if (!$id || !preg_match('/^(gpt-|o1|o3|chatgpt)/', $id)) continue;
+                    $models[] = array(
+                        'id' => $id,
+                        'label' => $id,
+                        'pricing_note' => $note_for($id),
+                        'is_free' => false, // OpenAI API is never free
+                    );
+                }
+                usort($models, fn($a, $b) => strcmp($a['id'], $b['id']));
+                return array('success' => true, 'models' => $models, 'error' => '');
+
+            case 'hermes':
+                // OpenRouter publicly lists ALL models with real per-token
+                // pricing (and explicitly marks free-tier models with a
+                // ":free" id suffix / zero pricing) - no API key required
+                // just to list them.
+                $response = wp_remote_get('https://openrouter.ai/api/v1/models', $this->http_args());
+                if (is_wp_error($response)) return array('success' => false, 'models' => array(), 'error' => $response->get_error_message());
+                $body = json_decode(wp_remote_retrieve_body($response), true);
+                if (empty($body['data'])) {
+                    return array('success' => false, 'models' => array(), 'error' => 'پاسخ نامعتبر از OpenRouter');
+                }
+                $models = array();
+                foreach ($body['data'] as $m) {
+                    $id = $m['id'] ?? '';
+                    if (!$id) continue;
+                    // Only surface Hermes models (this provider slot is
+                    // labeled "Hermes") plus keep the list manageable.
+                    if (stripos($id, 'hermes') === false) continue;
+                    $prompt_cost = (float) ($m['pricing']['prompt'] ?? 0);
+                    $completion_cost = (float) ($m['pricing']['completion'] ?? 0);
+                    $is_free = (str_ends_with($id, ':free') || ($prompt_cost === 0.0 && $completion_cost === 0.0));
+                    $note = $is_free
+                        ? 'رایگان'
+                        : sprintf('%.2f$ / میلیون توکن ورودی', $prompt_cost * 1000000);
+                    $models[] = array(
+                        'id' => $id,
+                        'label' => $m['name'] ?? $id,
+                        'pricing_note' => $note,
+                        'is_free' => $is_free,
+                    );
+                }
+                if (empty($models)) {
+                    // Fall back to showing everything if nothing matched
+                    // "hermes" (OpenRouter catalog changes over time).
+                    foreach ($body['data'] as $m) {
+                        $id = $m['id'] ?? '';
+                        if (!$id) continue;
+                        $prompt_cost = (float) ($m['pricing']['prompt'] ?? 0);
+                        $is_free = (str_ends_with($id, ':free') || $prompt_cost === 0.0);
+                        $models[] = array(
+                            'id' => $id,
+                            'label' => $m['name'] ?? $id,
+                            'pricing_note' => $is_free ? 'رایگان' : sprintf('%.2f$ / میلیون توکن ورودی', $prompt_cost * 1000000),
+                            'is_free' => $is_free,
+                        );
+                    }
+                }
+                return array('success' => true, 'models' => array_slice($models, 0, 60), 'error' => '');
+
+            case 'cloudflare_ai':
+                if (!$api_key || !$account_id) {
+                    return array('success' => false, 'models' => array(), 'error' => 'ابتدا کلید API و Account ID را وارد کنید');
+                }
+                $response = wp_remote_get(
+                    "https://api.cloudflare.com/client/v4/accounts/{$account_id}/ai/models/search?task=Text%20Generation",
+                    $this->http_args(array('headers' => array('Authorization' => 'Bearer ' . $api_key)))
+                );
+                if (is_wp_error($response)) return array('success' => false, 'models' => array(), 'error' => $response->get_error_message());
+                $body = json_decode(wp_remote_retrieve_body($response), true);
+                if (empty($body['result'])) {
+                    return array('success' => false, 'models' => array(), 'error' => $body['errors'][0]['message'] ?? 'پاسخ نامعتبر از Cloudflare');
+                }
+                $models = array();
+                foreach ($body['result'] as $m) {
+                    $id = $m['name'] ?? '';
+                    if (!$id) continue;
+                    $models[] = array(
+                        'id' => $id,
+                        'label' => $id,
+                        // Cloudflare Workers AI bills in "Neurons"; exact
+                        // free-quota status changes by plan, so we surface
+                        // it as informational rather than a hard yes/no.
+                        'pricing_note' => 'بر اساس Neuron مصرفی (پلن Cloudflare شما)',
+                        'is_free' => false,
+                    );
+                }
+                return array('success' => true, 'models' => $models, 'error' => '');
+
+            case 'zai':
+            case 'custom':
+                // Best-effort: try the OpenAI-compatible /models endpoint
+                // derived from the configured chat-completions URL.
+                $base_url = $url_override ?: get_option("moaveze_ai_{$provider}_url") ?: self::get_providers()[$provider]['default_url'];
+                if (!$base_url) {
+                    return array('success' => false, 'models' => array(), 'error' => 'ابتدا آدرس API را وارد کنید تا امکان دریافت لیست مدل‌ها بررسی شود');
+                }
+                $models_url = preg_replace('#/chat/completions/?$#', '/models', rtrim($base_url, '/'));
+                $response = wp_remote_get($models_url, $this->http_args(array(
+                    'headers' => $api_key ? array('Authorization' => 'Bearer ' . $api_key) : array(),
+                )));
+                if (is_wp_error($response)) {
+                    return array('success' => false, 'models' => array(), 'error' => 'این ارائه‌دهنده از دریافت خودکار لیست مدل‌ها پشتیبانی نکرد؛ نام مدل را دستی وارد کنید.');
+                }
+                $body = json_decode(wp_remote_retrieve_body($response), true);
+                if (empty($body['data'])) {
+                    return array('success' => false, 'models' => array(), 'error' => 'این ارائه‌دهنده از دریافت خودکار لیست مدل‌ها پشتیبانی نکرد؛ نام مدل را دستی وارد کنید.');
+                }
+                $models = array();
+                foreach ($body['data'] as $m) {
+                    $id = $m['id'] ?? '';
+                    if (!$id) continue;
+                    $models[] = array(
+                        'id' => $id,
+                        'label' => $id,
+                        'pricing_note' => 'هزینه نامشخص - قبل از استفاده تست کنید',
+                        'is_free' => false,
+                    );
+                }
+                return array('success' => true, 'models' => $models, 'error' => '');
+
+            default:
+                return array('success' => false, 'models' => array(), 'error' => 'ارائه‌دهنده نامعتبر است');
+        }
     }
 
     /**
@@ -185,9 +436,26 @@ class Moaveze_AI_Valuation {
             </p>
 
             <div class="valuation-current">
-                <strong>ارزش فعلی ثبت‌شده در آگهی:</strong>
+                <strong>ارزش ثبت‌شده توسط مالک (تغییرناپذیر از این بخش):</strong>
                 <span class="valuation-current-value"><?php echo esc_html(Moaveze_Helpers::short_price($exchange->property_value ?? 0)); ?></span>
             </div>
+            <?php
+            $expert_value = get_post_meta($post->ID, '_moaveze_expert_value', true);
+            if ($expert_value) :
+                $expert_min = get_post_meta($post->ID, '_moaveze_expert_min', true);
+                $expert_max = get_post_meta($post->ID, '_moaveze_expert_max', true);
+                ?>
+                <div class="valuation-current valuation-current-expert">
+                    <strong>قیمت کارشناسی فعلاً منتشرشده روی آگهی:</strong>
+                    <span class="valuation-current-value">
+                        <?php echo esc_html(Moaveze_Helpers::short_price($expert_value)); ?>
+                        <?php if ($expert_min && $expert_max) : ?>
+                            <small>(محدوده: <?php echo esc_html(Moaveze_Helpers::short_price($expert_min)); ?> تا <?php echo esc_html(Moaveze_Helpers::short_price($expert_max)); ?>)</small>
+                        <?php endif; ?>
+                    </span>
+                    <p class="description">این مقدار جدا از ارزش مالک، در کادر مجزای «قیمت کارشناسی» روی صفحه آگهی نمایش داده می‌شود و هرگز جای قیمت مالک را نمی‌گیرد.</p>
+                </div>
+            <?php endif; ?>
 
             <div class="valuation-tabs">
                 <button type="button" class="valuation-tab-btn active" data-tab="manual">ارزش‌گذاری دستی</button>
@@ -200,14 +468,23 @@ class Moaveze_AI_Valuation {
             <div class="valuation-tab-content" data-tab-content="manual">
                 <div class="valuation-field-grid">
                     <div class="moaveze-field">
-                        <label>ارزش پیشنهادی مشاور (تومان)</label>
+                        <label>قیمت کارشناسی (تومان)</label>
                         <input type="text" class="moaveze-price-input valuation-manual-value" placeholder="مثال: 15000000000">
+                    </div>
+                    <div class="moaveze-field">
+                        <label>حداقل محدوده (اختیاری)</label>
+                        <input type="text" class="moaveze-price-input valuation-manual-min" placeholder="مثال: 14000000000">
+                    </div>
+                    <div class="moaveze-field">
+                        <label>حداکثر محدوده (اختیاری)</label>
+                        <input type="text" class="moaveze-price-input valuation-manual-max" placeholder="مثال: 16000000000">
                     </div>
                 </div>
                 <div class="moaveze-field">
                     <label>یادداشت / دلیل ارزش‌گذاری</label>
                     <textarea class="valuation-manual-notes" rows="2" placeholder="مثال: با توجه به موقعیت و بازسازی، ارزش واقعی بالاتر از ثبت مالک است."></textarea>
                 </div>
+                <p class="description">این قیمت هرگز جای «ارزش ملک» که مالک ثبت کرده را نمی‌گیرد؛ بعد از اعمال، در کادر مجزای «قیمت کارشناسی» روی صفحه آگهی نمایش داده می‌شود.</p>
                 <button type="button" class="button button-primary valuation-save-manual-btn">
                     <span class="dashicons dashicons-yes"></span> ذخیره ارزش‌گذاری دستی
                 </button>
@@ -270,7 +547,10 @@ class Moaveze_AI_Valuation {
 
         $exchange_id = absint($_POST['exchange_id'] ?? 0);
         $post_id = absint($_POST['post_id'] ?? 0);
-        $value = absint(str_replace(array(',', ' ', '٬'), '', $_POST['value'] ?? ''));
+        $digit_clean = fn($s) => absint(preg_replace('/[^\d]/', '', (string) $s));
+        $value = $digit_clean($_POST['value'] ?? '');
+        $min_value = !empty($_POST['min_value']) ? $digit_clean($_POST['min_value']) : null;
+        $max_value = !empty($_POST['max_value']) ? $digit_clean($_POST['max_value']) : null;
         $notes = sanitize_textarea_field($_POST['notes'] ?? '');
 
         if (!$exchange_id || !$value) {
@@ -279,13 +559,15 @@ class Moaveze_AI_Valuation {
 
         global $wpdb;
         $wpdb->insert($wpdb->prefix . 'moaveze_valuations', array(
-            'exchange_id'    => $exchange_id,
-            'post_id'        => $post_id,
-            'type'           => 'manual',
-            'manual_value'   => $value,
-            'manual_notes'   => $notes,
-            'status'         => 'pending',
-            'created_by'     => get_current_user_id(),
+            'exchange_id'      => $exchange_id,
+            'post_id'          => $post_id,
+            'type'             => 'manual',
+            'manual_value'     => $value,
+            'manual_min_value' => $min_value,
+            'manual_max_value' => $max_value,
+            'manual_notes'     => $notes,
+            'status'           => 'pending',
+            'created_by'       => get_current_user_id(),
         ));
 
         wp_send_json_success(array(
@@ -296,10 +578,17 @@ class Moaveze_AI_Valuation {
     }
 
     /**
-     * AJAX: apply a saved valuation (manual or AI) as the listing's
-     * official property_value - a deliberate, explicit consultant
-     * action (never automatic) so an AI/manual suggestion can never
-     * silently overwrite what the property owner submitted.
+     * AJAX: apply a saved valuation (manual or AI) to the listing.
+     *
+     * IMPORTANT (per explicit user correction): this must NEVER replace
+     * the owner's own declared "ارزش ملک" (_moaveze_property_value /
+     * moaveze_exchanges.property_value). The consultant/AI valuation is
+     * always stored and displayed as a SEPARATE "قیمت کارشناسی" (expert
+     * price / range) box - see _moaveze_expert_value* post meta below
+     * and the dedicated card rendered in templates/single-exchange.php.
+     * "Applying" a valuation now means: publish it as the listing's
+     * official expert-assessed value/range, visible to everyone
+     * alongside (never instead of) the owner's original price.
      */
     public function ajax_apply_valuation() {
         check_ajax_referer('moaveze_valuation', 'nonce');
@@ -312,15 +601,21 @@ class Moaveze_AI_Valuation {
         ));
         if (!$valuation) wp_send_json_error('ارزش‌گذاری یافت نشد');
 
-        $new_value = $valuation->manual_value ?: $valuation->suggested_value;
-        if (!$new_value) wp_send_json_error('مقدار ارزش نامعتبر است');
+        $expert_value = $valuation->manual_value ?: $valuation->suggested_value;
+        $expert_min = $valuation->manual_min_value ?: $valuation->suggested_min;
+        $expert_max = $valuation->manual_max_value ?: $valuation->suggested_max;
+        if (!$expert_value) wp_send_json_error('مقدار ارزش نامعتبر است');
 
-        update_post_meta($valuation->post_id, '_moaveze_property_value', $new_value);
-        $wpdb->update(
-            $wpdb->prefix . 'moaveze_exchanges',
-            array('property_value' => $new_value),
-            array('id' => $valuation->exchange_id)
-        );
+        // Stored on POST META only (a display-layer addition) - the
+        // owner's original price in _moaveze_property_value / the
+        // moaveze_exchanges.property_value column is left completely
+        // untouched.
+        update_post_meta($valuation->post_id, '_moaveze_expert_value', $expert_value);
+        update_post_meta($valuation->post_id, '_moaveze_expert_min', $expert_min ?: '');
+        update_post_meta($valuation->post_id, '_moaveze_expert_max', $expert_max ?: '');
+        update_post_meta($valuation->post_id, '_moaveze_expert_value_type', $valuation->type);
+        update_post_meta($valuation->post_id, '_moaveze_expert_value_date', current_time('mysql'));
+
         $wpdb->update(
             $wpdb->prefix . 'moaveze_valuations',
             array('status' => 'applied'),
@@ -328,8 +623,8 @@ class Moaveze_AI_Valuation {
         );
 
         wp_send_json_success(array(
-            'message' => 'ارزش جدید روی آگهی اعمال شد',
-            'value_short' => Moaveze_Helpers::short_price($new_value),
+            'message' => 'قیمت کارشناسی به‌صورت جداگانه روی آگهی نمایش داده شد (قیمت مالک تغییر نکرد)',
+            'value_short' => Moaveze_Helpers::short_price($expert_value),
         ));
     }
 

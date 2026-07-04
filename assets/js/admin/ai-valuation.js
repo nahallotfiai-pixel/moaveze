@@ -15,6 +15,7 @@
             this.bindRunAI();
             this.bindApply();
             this.bindTestConnection();
+            this.bindFetchModels();
         },
 
         bindTabs() {
@@ -28,6 +29,11 @@
             });
         },
 
+        toLatinDigits(str) {
+            const persianMap = { '۰':'0','۱':'1','۲':'2','۳':'3','۴':'4','۵':'5','۶':'6','۷':'7','۸':'8','۹':'9' };
+            return (str || '').replace(/[۰-۹]/g, (ch) => persianMap[ch] || ch);
+        },
+
         bindManualSave() {
             $(document).on('click', '.valuation-save-manual-btn', function () {
                 const $box = $(this).closest('.moaveze-valuation-box');
@@ -35,10 +41,9 @@
                 // Normalize Persian/Arabic-Indic digits to Latin before
                 // stripping non-digits (same fix as the frontend price
                 // inputs - see MoavezePlus.toLatinDigits() in main.js).
-                const persianMap = { '۰':'0','۱':'1','۲':'2','۳':'3','۴':'4','۵':'5','۶':'6','۷':'7','۸':'8','۹':'9' };
-                const rawInput = $box.find('.valuation-manual-value').val() || '';
-                const latinized = rawInput.replace(/[۰-۹]/g, (ch) => persianMap[ch] || ch);
-                const value = latinized.replace(/[^\d]/g, '');
+                const value = MoavezeValuation.toLatinDigits($box.find('.valuation-manual-value').val()).replace(/[^\d]/g, '');
+                const minValue = MoavezeValuation.toLatinDigits($box.find('.valuation-manual-min').val()).replace(/[^\d]/g, '');
+                const maxValue = MoavezeValuation.toLatinDigits($box.find('.valuation-manual-max').val()).replace(/[^\d]/g, '');
                 const notes = $box.find('.valuation-manual-notes').val();
 
                 if (!value) {
@@ -53,6 +58,8 @@
                     exchange_id: $box.data('exchange-id'),
                     post_id: $box.data('post-id'),
                     value: value,
+                    min_value: minValue,
+                    max_value: maxValue,
                     notes: notes,
                 }, function (response) {
                     $btn.prop('disabled', false);
@@ -63,6 +70,74 @@
                         alert(response.data.message || response.data || 'خطا در ذخیره');
                     }
                 });
+            });
+        },
+
+        /**
+         * "دریافت لیست مدل‌های موجود" button next to each provider's
+         * model field on Settings > هوش مصنوعی - fetches the real list
+         * of models available to the entered API key/account right now
+         * and shows each one's رایگان/پولی status so the admin never has
+         * to guess or hardcode a model name.
+         */
+        bindFetchModels() {
+            $(document).on('click', '.moaveze-ai-fetch-models-btn', function () {
+                const $btn = $(this);
+                const provider = $btn.data('provider');
+                const $card = $btn.closest('.moaveze-ai-provider-card');
+                const $status = $card.find('.moaveze-ai-models-status');
+                const $select = $card.find('.moaveze-ai-model-select');
+                const $input = $card.find('.moaveze-ai-model-input');
+                const apiKey = $card.find('input[type="password"]').val();
+                const accountId = $card.find('input[name="moaveze_ai_cloudflare_ai_account_id"]').val();
+                const url = $card.find('.moaveze-ai-url-input').val();
+
+                $btn.prop('disabled', true).find('.dashicons').addClass('moaveze-spin');
+                $status.text('در حال دریافت لیست مدل‌ها...').css('color', '#64748b');
+
+                $.post(moavezeAdmin.ajaxUrl, {
+                    action: 'moaveze_fetch_ai_models',
+                    nonce: moavezeAdmin.nonce,
+                    provider: provider,
+                    api_key: apiKey,
+                    account_id: accountId,
+                    url: url,
+                }, function (response) {
+                    $btn.prop('disabled', false).find('.dashicons').removeClass('moaveze-spin');
+
+                    if (!response.success) {
+                        $status.text('✗ ' + (response.data || 'خطا در دریافت لیست مدل‌ها')).css('color', '#dc2626');
+                        $select.hide();
+                        return;
+                    }
+
+                    const models = response.data.models || [];
+                    if (!models.length) {
+                        $status.text('هیچ مدلی برای این حساب یافت نشد.').css('color', '#dc2626');
+                        $select.hide();
+                        return;
+                    }
+
+                    $select.empty();
+                    models.forEach((m) => {
+                        const badge = m.is_free ? '🟢 رایگان' : '🔶 ' + m.pricing_note;
+                        const $opt = $('<option></option>').val(m.id).text(`${m.label} — ${badge}`);
+                        if (m.id === $input.val()) $opt.prop('selected', true);
+                        $select.append($opt);
+                    });
+                    $select.show();
+                    $status.text(`✓ ${models.length} مدل یافت شد. یکی را انتخاب کنید یا نام مدل را در فیلد بالا دستی وارد کنید.`).css('color', '#16a34a');
+                }).fail(() => {
+                    $btn.prop('disabled', false).find('.dashicons').removeClass('moaveze-spin');
+                    $status.text('✗ خطا در ارتباط با سرور').css('color', '#dc2626');
+                });
+            });
+
+            // Selecting a model from the dropdown fills the text input
+            // (which is what actually gets saved via register_setting()).
+            $(document).on('change', '.moaveze-ai-model-select', function () {
+                const $card = $(this).closest('.moaveze-ai-provider-card');
+                $card.find('.moaveze-ai-model-input').val($(this).val());
             });
         },
 

@@ -18,6 +18,109 @@ class Moaveze_Meta_Fields {
         add_action('save_post_moaveze_exchange', array(__CLASS__, 'save_meta'));
         add_action('pre_get_posts', array(__CLASS__, 'hide_private_reciprocal_listings'));
         add_action('wp_ajax_moaveze_repair_feature_terms', array(__CLASS__, 'ajax_repair_feature_terms'));
+        add_action('wp_ajax_moaveze_toggle_feature', array(__CLASS__, 'ajax_toggle_feature'));
+    }
+
+    /**
+     * Purge any known full-page/object caching plugin for a single
+     * listing after its data changes. This exists because on a
+     * (very common) Iran-hosted WordPress setup, a caching plugin such
+     * as LiteSpeed Cache, WP Rocket, W3 Total Cache, WP Super Cache, or
+     * SG Optimizer can keep serving the OLD rendered HTML of a listing
+     * page for hours/days even though the underlying taxonomy/meta was
+     * already updated correctly - which looks IDENTICAL, from the
+     * site owner's point of view, to "the checkbox fix doesn't work".
+     * This is deliberately defensive (checks function/class existence)
+     * so it's a no-op and harmless on sites with no cache plugin.
+     */
+    public static function purge_listing_cache($post_id) {
+        clean_post_cache($post_id);
+        wp_cache_delete($post_id, 'post_meta');
+
+        $permalink = get_permalink($post_id);
+
+        // LiteSpeed Cache
+        if (class_exists('LiteSpeed\Purge')) {
+            \LiteSpeed\Purge::purge_post($post_id);
+        } elseif (function_exists('do_action')) {
+            do_action('litespeed_purge_post', $post_id);
+        }
+
+        // WP Rocket
+        if (function_exists('rocket_clean_post')) {
+            rocket_clean_post($post_id);
+        }
+
+        // W3 Total Cache
+        if (function_exists('w3tc_flush_post')) {
+            w3tc_flush_post($post_id);
+        }
+
+        // WP Super Cache
+        if (function_exists('wp_cache_post_change')) {
+            wp_cache_post_change($post_id);
+        }
+        if ($permalink && function_exists('wpsc_delete_url_cache')) {
+            wpsc_delete_url_cache($permalink);
+        }
+
+        // SiteGround Optimizer
+        if (class_exists('SiteGround_Optimizer\Supercacher\Supercacher')) {
+            \SiteGround_Optimizer\Supercacher\Supercacher::purge_cache_request();
+        }
+
+        // Generic: let any other caching plugin hook into this action.
+        do_action('moaveze_purge_listing_cache', $post_id, $permalink);
+    }
+
+    /**
+     * AJAX: instant single-feature toggle - clicking a feature checkbox
+     * in the wp-admin metabox saves it immediately via AJAX instead of
+     * waiting for the admin to click "به‌روزرسانی"/"Update" on the whole
+     * post. This removes an entire class of "I checked the box but it
+     * still doesn't show" reports that were actually just the admin not
+     * having saved the post yet, or the Update click failing silently
+     * for an unrelated reason elsewhere on the screen.
+     */
+    public static function ajax_toggle_feature() {
+        check_ajax_referer('moaveze_admin_nonce', 'nonce');
+
+        $post_id = absint($_POST['post_id'] ?? 0);
+        $key = sanitize_key($_POST['feature_key'] ?? '');
+        $checked = !empty($_POST['checked']) && $_POST['checked'] !== 'false';
+
+        if (!$post_id || !current_user_can('edit_post', $post_id)) {
+            wp_send_json_error('دسترسی ندارید');
+        }
+
+        $feature_map = self::get_feature_taxonomy_map();
+        if (!isset($feature_map[$key])) {
+            wp_send_json_error('ویژگی نامعتبر است');
+        }
+
+        update_post_meta($post_id, '_moaveze_' . $key, $checked ? '1' : '0');
+
+        // Re-sync the FULL feature term list from all boolean meta (not
+        // just this one key), so this stays perfectly consistent with
+        // what save_meta() does on a full post save.
+        $active_feature_terms = array();
+        foreach ($feature_map as $k => $term_name) {
+            if (get_post_meta($post_id, '_moaveze_' . $k, true) === '1') {
+                $active_feature_terms[] = $term_name;
+            }
+        }
+        wp_set_object_terms($post_id, $active_feature_terms, 'moaveze_feature', false);
+        self::purge_listing_cache($post_id);
+
+        // Return the just-verified state read fresh from the DB (not
+        // just an echo of what was sent) - this is also used by the
+        // "وضعیت فعلی" diagnostic readout in the metabox to prove the
+        // save actually happened.
+        $fresh_terms = wp_list_pluck(get_the_terms($post_id, 'moaveze_feature') ?: array(), 'name');
+        wp_send_json_success(array(
+            'message'      => $checked ? 'ذخیره شد: ' . $feature_map[$key] . ' فعال شد' : 'ذخیره شد: ' . $feature_map[$key] . ' غیرفعال شد',
+            'active_terms' => $fresh_terms,
+        ));
     }
 
     /**
@@ -161,8 +264,22 @@ class Moaveze_Meta_Fields {
             }
 
             $field = $fields[$key];
-            self::render_field($key, $field, $value);
+            $is_feature = isset($feature_map[$key]);
+            self::render_field($key, $field, $value, $is_feature ? $post->ID : null);
         }
+        echo '</div>';
+
+        // ===== Diagnostic readout ("وضعیت فعلی امکانات") =====
+        // Shows EXACTLY which moaveze_feature taxonomy terms are
+        // currently saved for this post, read fresh with no caching, so
+        // the admin can immediately verify a checkbox toggle actually
+        // took effect on THIS screen without needing to check the live
+        // front-end page (which may itself be served from a page cache -
+        // see purge_listing_cache()).
+        echo '<div class="moaveze-feature-debug-box" id="moaveze-feature-debug-box">';
+        echo '<strong>وضعیت فعلی امکانات ذخیره‌شده (به‌صورت زنده):</strong> ';
+        echo '<span id="moaveze-feature-debug-list">' . (empty($existing_terms) ? '<em>هیچ ویژگی‌ای ثبت نشده</em>' : esc_html(implode('، ', $existing_terms))) . '</span>';
+        echo '<p class="description">این خط بلافاصله بعد از کلیک روی هر تیک به‌روزرسانی می‌شود (بدون نیاز به دکمه «به‌روزرسانی») و مستقیماً از پایگاه داده خوانده می‌شود. اگر امکانات اینجا صحیح است ولی در صفحه سایت دیده نمی‌شود، مشکل از کش صفحه سایت است، نه از این افزونه (این افزونه به‌صورت خودکار تلاش می‌کند کش افزونه‌های رایج را هم پاک کند).</p>';
         echo '</div>';
     }
 
@@ -219,7 +336,7 @@ class Moaveze_Meta_Fields {
     /**
      * Render a single field
      */
-    private static function render_field($key, $field, $value) {
+    private static function render_field($key, $field, $value, $instant_save_post_id = null) {
         $name = 'moaveze_' . $key;
         echo '<div class="moaveze-field">';
         echo '<label for="' . esc_attr($name) . '">' . esc_html($field['label']) . '</label>';
@@ -229,7 +346,20 @@ class Moaveze_Meta_Fields {
                 echo '<textarea id="' . esc_attr($name) . '" name="' . esc_attr($name) . '" rows="3">' . esc_textarea($value) . '</textarea>';
                 break;
             case 'checkbox':
-                echo '<input type="checkbox" id="' . esc_attr($name) . '" name="' . esc_attr($name) . '" value="1" ' . checked($value, '1', false) . '>';
+                $extra_attrs = '';
+                if ($instant_save_post_id) {
+                    // Feature checkboxes (پارکینگ/آسانسور/...) save
+                    // THEMSELVES instantly via AJAX the moment they're
+                    // clicked - see the .moaveze-instant-feature handler
+                    // in assets/js/admin/admin.js - so toggling one no
+                    // longer depends on the admin remembering to click
+                    // "به‌روزرسانی" on the whole post at all.
+                    $extra_attrs = ' class="moaveze-instant-feature" data-post-id="' . esc_attr($instant_save_post_id) . '" data-feature-key="' . esc_attr($key) . '"';
+                }
+                echo '<input type="checkbox" id="' . esc_attr($name) . '" name="' . esc_attr($name) . '" value="1" ' . checked($value, '1', false) . $extra_attrs . '>';
+                if ($instant_save_post_id) {
+                    echo ' <span class="moaveze-instant-save-status" data-feature-key="' . esc_attr($key) . '"></span>';
+                }
                 break;
             case 'select':
                 echo '<select id="' . esc_attr($name) . '" name="' . esc_attr($name) . '">';
@@ -435,6 +565,14 @@ class Moaveze_Meta_Fields {
             }
         }
         wp_set_object_terms($post_id, $active_feature_terms, 'moaveze_feature', false);
+
+        // See purge_listing_cache() docblock above: without this, a
+        // caching plugin on the (typically Iran-hosted) live site can
+        // keep serving the pre-edit HTML of the listing page for a long
+        // time even though the taxonomy above was just updated correctly
+        // - which is indistinguishable, from the site owner's point of
+        // view, from "the fix doesn't work".
+        self::purge_listing_cache($post_id);
     }
 }
 

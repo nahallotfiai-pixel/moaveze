@@ -24,7 +24,7 @@ define('MOAVEZE_PLUS_FILE', __FILE__);
 define('MOAVEZE_PLUS_PATH', plugin_dir_path(__FILE__));
 define('MOAVEZE_PLUS_URL', plugin_dir_url(__FILE__));
 define('MOAVEZE_PLUS_BASENAME', plugin_basename(__FILE__));
-define('MOAVEZE_PLUS_DB_VERSION', '1.2.0'); // bumped: added moaveze_valuations table (AI + manual valuation)
+define('MOAVEZE_PLUS_DB_VERSION', '1.3.0'); // bumped: added manual_min_value/manual_max_value range columns to moaveze_valuations (expert valuation range, kept separate from owner's price)
 
 /**
  * Main Plugin Class

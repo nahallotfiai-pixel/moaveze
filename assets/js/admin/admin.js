@@ -14,6 +14,66 @@
             this.initConsultantActions();
             this.initImportHouzez();
             this.initConnectPartiesModal();
+            this.initInstantFeatureToggle();
+        },
+
+        /**
+         * Feature checkboxes (پارکینگ/آسانسور/انباری/...) on the exchange
+         * listing edit screen save themselves INSTANTLY via AJAX the
+         * moment they're clicked - no need to click "به‌روزرسانی" first.
+         *
+         * WHY: the most likely explanation for "I checked the box in
+         * wp-admin but it still doesn't show on the site" reports that
+         * persisted even after the taxonomy-sync bug was fixed is simply
+         * that clicking a checkbox alone does nothing until the whole
+         * post form is submitted - and it's easy to toggle a box, get
+         * distracted, and never actually click Update. Saving instantly
+         * removes that entire failure mode. It also updates the
+         * "وضعیت فعلی امکانات ذخیره‌شده" live readout in the metabox so
+         * the admin gets immediate, verifiable confirmation the value
+         * really did reach the database - no guessing, no waiting for a
+         * full page reload of the (possibly cached) public listing page.
+         */
+        initInstantFeatureToggle() {
+            $(document).on('change', '.moaveze-instant-feature', function() {
+                const $checkbox = $(this);
+                const postId = $checkbox.data('post-id');
+                const featureKey = $checkbox.data('feature-key');
+                const checked = $checkbox.is(':checked');
+                const $status = $(`.moaveze-instant-save-status[data-feature-key="${featureKey}"]`);
+
+                $checkbox.prop('disabled', true);
+                $status.html('<span class="spinner is-active" style="float:none;margin:0 4px;width:14px;height:14px;"></span>');
+
+                $.post(moavezeAdmin.ajaxUrl, {
+                    action: 'moaveze_toggle_feature',
+                    nonce: moavezeAdmin.nonce,
+                    post_id: postId,
+                    feature_key: featureKey,
+                    checked: checked ? '1' : '',
+                }, function(response) {
+                    $checkbox.prop('disabled', false);
+                    if (response.success) {
+                        $status.html('<span class="dashicons dashicons-yes-alt" style="color:#16a34a;"></span>').attr('title', response.data.message);
+                        setTimeout(() => $status.fadeOut(600, function(){ $(this).show().empty(); }), 1500);
+                        // Live-refresh the diagnostic readout with what
+                        // was actually just verified in the database.
+                        const $debugList = $('#moaveze-feature-debug-list');
+                        if ($debugList.length) {
+                            $debugList.text(response.data.active_terms.length ? response.data.active_terms.join('، ') : '');
+                            if (!response.data.active_terms.length) $debugList.html('<em>هیچ ویژگی‌ای ثبت نشده</em>');
+                        }
+                    } else {
+                        $status.html('<span class="dashicons dashicons-warning" style="color:#dc2626;"></span>');
+                        alert('خطا در ذخیره: ' + (response.data || 'خطای نامشخص') + ' — لطفاً دوباره تلاش کنید یا با دکمه «به‌روزرسانی» کل فرم را ذخیره کنید.');
+                        $checkbox.prop('checked', !checked); // revert on failure
+                    }
+                }).fail(function() {
+                    $checkbox.prop('disabled', false).prop('checked', !checked);
+                    $status.html('<span class="dashicons dashicons-warning" style="color:#dc2626;"></span>');
+                    alert('خطا در ارتباط با سرور - تیک به حالت قبل بازگشت. لطفاً اتصال اینترنت را بررسی کنید یا از دکمه «به‌روزرسانی» استفاده کنید.');
+                });
+            });
         },
 
         /**
