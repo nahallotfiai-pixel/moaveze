@@ -56,6 +56,19 @@ class Moaveze_AI_Valuation {
             'gemini' => array(
                 'label'          => 'Google Gemini',
                 'default_url'    => 'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}',
+                // NOTE: the free tier of every Gemini model (including
+                // this default) has a shared, low per-minute rate limit
+                // that is completely independent of remaining credit/
+                // quota balance - "high demand"/503 errors from Google
+                // happen even with plenty of credit left, simply because
+                // too many requests hit that specific model within a
+                // short window. Use the "دریافت لیست مدل‌های موجود"
+                // button in Settings > هوش مصنوعی to switch to
+                // 'gemini-2.0-flash-lite' or another available model,
+                // which has its own SEPARATE rate-limit bucket and often
+                // recovers faster - see is_google_rate_limit_error()
+                // below for how this is now explained to the consultant
+                // in-context rather than showing Google's raw message.
                 'default_model'  => 'gemini-1.5-flash',
                 'auth_style'     => 'query_key',
             ),
@@ -338,7 +351,7 @@ class Moaveze_AI_Valuation {
                 }
                 $models = array();
                 foreach ($body['models'] as $m) {
-                    if (empty($m['name']) || !str_contains($m['name'], 'gemini')) continue;
+                    if (empty($m['name']) || strpos($m['name'], 'gemini') === false) continue;
                     // supportedGenerationMethods should include generateContent
                     if (!empty($m['supportedGenerationMethods']) && !in_array('generateContent', $m['supportedGenerationMethods'], true)) continue;
                     $id = str_replace('models/', '', $m['name']);
@@ -398,7 +411,7 @@ class Moaveze_AI_Valuation {
                     if (stripos($id, 'hermes') === false) continue;
                     $prompt_cost = (float) ($m['pricing']['prompt'] ?? 0);
                     $completion_cost = (float) ($m['pricing']['completion'] ?? 0);
-                    $is_free = (str_ends_with($id, ':free') || ($prompt_cost === 0.0 && $completion_cost === 0.0));
+                    $is_free = (substr($id, -5) === ':free' || ($prompt_cost === 0.0 && $completion_cost === 0.0));
                     $note = $is_free
                         ? 'رایگان'
                         : sprintf('%.2f$ / میلیون توکن ورودی', $prompt_cost * 1000000);
@@ -416,7 +429,7 @@ class Moaveze_AI_Valuation {
                         $id = $m['id'] ?? '';
                         if (!$id) continue;
                         $prompt_cost = (float) ($m['pricing']['prompt'] ?? 0);
-                        $is_free = (str_ends_with($id, ':free') || $prompt_cost === 0.0);
+                        $is_free = (substr($id, -5) === ':free' || $prompt_cost === 0.0);
                         $models[] = array(
                             'id' => $id,
                             'label' => $m['name'] ?? $id,
@@ -1132,6 +1145,44 @@ PROMPT;
      * "واقعاً جست‌وجوشده" vs "صرفاً بر اساس دانش قبلی مدل" so the
      * consultant is never misled about whether a link is real.
      */
+    /**
+     * Translate Google's raw Gemini API error text into an explicit,
+     * actionable Persian message - specifically to answer "آیا این
+     * ارور به خاطر خطای خود افزونه است؟" (is this our bug?). Google's
+     * "This model is currently experiencing high demand" (a 503
+     * UNAVAILABLE response) is a well-documented, TEMPORARY overload
+     * of that SPECIFIC free-tier model on Google's servers, completely
+     * unrelated to the site's remaining API credit/quota, and not
+     * something this plugin can fix from its side - it means "try
+     * again in a bit" or "switch to a different model" (each model has
+     * its own separate capacity/rate-limit pool, so a less-loaded model
+     * like gemini-2.0-flash-lite often works immediately even while
+     * gemini-1.5-flash is overloaded).
+     */
+    private function translate_gemini_error($raw_message) {
+        $lower = strtolower($raw_message);
+        // NOTE: uses strpos() rather than str_contains() (PHP 8.0+)
+        // since this plugin declares "Requires PHP: 7.4" in its header.
+        $contains = function ($haystack, $needle) {
+            return strpos($haystack, $needle) !== false;
+        };
+
+        if ($contains($lower, 'high demand') || $contains($lower, 'overloaded') || $contains($lower, 'unavailable')) {
+            return 'این خطا از سمت خود Google است، نه باگ افزونه: مدل انتخابی شما (Gemini) موقتاً با ترافیک بالا مواجه شده و سرورهای گوگل پاسخ نمی‌دهند. '
+                . 'این موضوع ارتباطی به اعتبار/کردیت باقیمانده شما ندارد. '
+                . 'راهکار: (۱) چند دقیقه بعد دوباره تلاش کنید، یا (۲) از تنظیمات > هوش مصنوعی، روی «دریافت لیست مدل‌های موجود» کلیک کنید و یک مدل دیگر مثل gemini-2.0-flash-lite را انتخاب کنید - '
+                . 'هر مدل ظرفیت جداگانه‌ای دارد و معمولاً وقتی یک مدل شلوغ است، مدل دیگر بلافاصله در دسترس است. (متن اصلی خطای گوگل: "' . $raw_message . '")';
+        }
+
+        if ($contains($lower, 'quota') || $contains($lower, 'rate limit') || $contains($lower, 'resource_exhausted')) {
+            return 'این خطا از سمت خود Google است، نه باگ افزونه: سهمیه رایگان این مدل برای این دقیقه/روز به پایان رسیده است. '
+                . 'راهکار: کمی صبر کنید، یا مدل دیگری انتخاب کنید، یا (در صورت نیاز به استفاده بیشتر) یک حساب پولی/billing برای این کلید API فعال کنید. '
+                . '(متن اصلی خطای گوگل: "' . $raw_message . '")';
+        }
+
+        return $raw_message;
+    }
+
     private function is_grounding_active() {
         if (get_option('moaveze_ai_grounding_enabled') !== 'yes') return false;
         // Grounding is only wired up for the direct Gemini call path;
@@ -1369,7 +1420,8 @@ PROMPT;
         $text = $candidate['content']['parts'][0]['text'] ?? null;
 
         if (!$text) {
-            return array('success' => false, 'text' => '', 'error' => $body['error']['message'] ?? 'پاسخ نامعتبر از Gemini');
+            $raw_message = $body['error']['message'] ?? 'پاسخ نامعتبر از Gemini';
+            return array('success' => false, 'text' => '', 'error' => $this->translate_gemini_error($raw_message));
         }
 
         // Extract the URLs Google's grounding tool actually used for

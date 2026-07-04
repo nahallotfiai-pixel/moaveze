@@ -57,6 +57,29 @@ class Moaveze_Listings {
             'show_filters'  => 'yes',
         ), $atts);
 
+        // BUG FIX ("قسمت جستجو در قسمت آگهی ها کار نمیکنه"): the
+        // #apply-filters/#reset-filters/#toggle-map-view buttons in
+        // render_filters() below had ZERO JavaScript binding anywhere
+        // in the codebase - clicking "جستجو" did nothing because no
+        // code ever read the filter values and did anything with them.
+        // This shortcode only ever read its own $atts (fixed values set
+        // when the shortcode was inserted), never anything from the
+        // current request - so there was no mechanism for a filter
+        // change to affect the query even in principle.
+        //
+        // Fix: the new JS (initListingsFilters() in main.js) submits
+        // the filter values as URL query parameters and reloads the
+        // page, and this method now reads those same query parameters
+        // as a fallback whenever the shortcode attribute itself wasn't
+        // explicitly fixed - exactly mirroring how WordPress's own
+        // paginate_links() 'paged' parameter already worked (which is
+        // why pagination worked while filtering never did).
+        $type = $atts['type'] ?: sanitize_text_field($_GET['moaveze_type'] ?? '');
+        $district = $atts['district'] ?: sanitize_text_field($_GET['moaveze_district'] ?? '');
+        $exchange_type = sanitize_text_field($_GET['moaveze_exchange_type'] ?? '');
+        $min_value = $atts['min_value'] ?: absint(preg_replace('/[^\d]/', '', $_GET['moaveze_min_value'] ?? ''));
+        $max_value = $atts['max_value'] ?: absint(preg_replace('/[^\d]/', '', $_GET['moaveze_max_value'] ?? ''));
+
         $paged = get_query_var('paged') ? get_query_var('paged') : 1;
 
         $args = array(
@@ -70,40 +93,47 @@ class Moaveze_Listings {
 
         // Tax queries
         $tax_query = array();
-        if (!empty($atts['type'])) {
+        if (!empty($type)) {
             $tax_query[] = array(
                 'taxonomy' => 'moaveze_property_type',
                 'field'    => 'slug',
-                'terms'    => $atts['type'],
+                'terms'    => $type,
             );
         }
-        if (!empty($atts['district'])) {
+        if (!empty($district)) {
             $tax_query[] = array(
                 'taxonomy' => 'moaveze_district',
                 'field'    => 'slug',
-                'terms'    => $atts['district'],
+                'terms'    => $district,
             );
         }
         if (!empty($tax_query)) {
             $args['tax_query'] = $tax_query;
         }
 
-        // Meta queries for value range
+        // Meta queries for value range + exchange type
         $meta_query = array();
-        if (!empty($atts['min_value'])) {
+        if (!empty($min_value)) {
             $meta_query[] = array(
                 'key'     => '_moaveze_property_value',
-                'value'   => absint($atts['min_value']),
+                'value'   => $min_value,
                 'compare' => '>=',
                 'type'    => 'NUMERIC',
             );
         }
-        if (!empty($atts['max_value'])) {
+        if (!empty($max_value)) {
             $meta_query[] = array(
                 'key'     => '_moaveze_property_value',
-                'value'   => absint($atts['max_value']),
+                'value'   => $max_value,
                 'compare' => '<=',
                 'type'    => 'NUMERIC',
+            );
+        }
+        if (!empty($exchange_type)) {
+            $meta_query[] = array(
+                'key'     => '_moaveze_exchange_type',
+                'value'   => $exchange_type,
+                'compare' => '=',
             );
         }
         if (!empty($meta_query)) {
@@ -166,46 +196,56 @@ class Moaveze_Listings {
     private function render_filters() {
         $types = get_terms(array('taxonomy' => 'moaveze_property_type', 'hide_empty' => false));
         $districts = get_terms(array('taxonomy' => 'moaveze_district', 'hide_empty' => false));
+
+        // Pre-fill from the current URL query params (see render_listings()
+        // fix above) so the filter bar visibly reflects an active search
+        // after the page reloads - e.g. after following a link with
+        // ?moaveze_district=... or after the "جستجو" button's own reload.
+        $current_type = sanitize_text_field($_GET['moaveze_type'] ?? '');
+        $current_district = sanitize_text_field($_GET['moaveze_district'] ?? '');
+        $current_exchange_type = sanitize_text_field($_GET['moaveze_exchange_type'] ?? '');
+        $current_min = sanitize_text_field($_GET['moaveze_min_value'] ?? '');
+        $current_max = sanitize_text_field($_GET['moaveze_max_value'] ?? '');
         ?>
         <div class="moaveze-filters-bar">
             <div class="moaveze-filter-group">
                 <select id="filter-type" class="moaveze-filter-select">
                     <option value="">نوع ملک</option>
                     <?php if (!is_wp_error($types)) : foreach ($types as $type) : ?>
-                        <option value="<?php echo esc_attr($type->slug); ?>"><?php echo esc_html($type->name); ?></option>
+                        <option value="<?php echo esc_attr($type->slug); ?>" <?php selected($current_type, $type->slug); ?>><?php echo esc_html($type->name); ?></option>
                     <?php endforeach; endif; ?>
                 </select>
 
                 <select id="filter-district" class="moaveze-filter-select">
                     <option value="">منطقه</option>
                     <?php if (!is_wp_error($districts)) : foreach ($districts as $d) : ?>
-                        <option value="<?php echo esc_attr($d->slug); ?>"><?php echo esc_html($d->name); ?></option>
+                        <option value="<?php echo esc_attr($d->slug); ?>" <?php selected($current_district, $d->slug); ?>><?php echo esc_html($d->name); ?></option>
                     <?php endforeach; endif; ?>
                 </select>
 
                 <select id="filter-exchange-type" class="moaveze-filter-select">
                     <option value="">نوع معاوضه</option>
-                    <option value="property_only">ملک با ملک</option>
-                    <option value="property_cash">ملک + نقد</option>
-                    <option value="property_car">ملک + خودرو</option>
-                    <option value="property_mixed">ترکیبی</option>
-                    <option value="flexible">انعطاف‌پذیر</option>
+                    <option value="property_only" <?php selected($current_exchange_type, 'property_only'); ?>>ملک با ملک</option>
+                    <option value="property_cash" <?php selected($current_exchange_type, 'property_cash'); ?>>ملک + نقد</option>
+                    <option value="property_car" <?php selected($current_exchange_type, 'property_car'); ?>>ملک + خودرو</option>
+                    <option value="property_mixed" <?php selected($current_exchange_type, 'property_mixed'); ?>>ترکیبی</option>
+                    <option value="flexible" <?php selected($current_exchange_type, 'flexible'); ?>>انعطاف‌پذیر</option>
                 </select>
 
                 <div class="moaveze-price-range">
-                    <input type="text" id="filter-min-price" placeholder="حداقل قیمت" class="moaveze-price-input">
+                    <input type="text" id="filter-min-price" placeholder="حداقل قیمت" class="moaveze-price-input" value="<?php echo esc_attr($current_min); ?>">
                     <span class="range-separator">تا</span>
-                    <input type="text" id="filter-max-price" placeholder="حداکثر قیمت" class="moaveze-price-input">
+                    <input type="text" id="filter-max-price" placeholder="حداکثر قیمت" class="moaveze-price-input" value="<?php echo esc_attr($current_max); ?>">
                 </div>
             </div>
 
             <div class="moaveze-filter-actions">
-                <button id="apply-filters" class="moaveze-btn moaveze-btn-primary moaveze-btn-sm">
+                <button type="button" id="apply-filters" class="moaveze-btn moaveze-btn-primary moaveze-btn-sm">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
                     جستجو
                 </button>
-                <button id="reset-filters" class="moaveze-btn moaveze-btn-ghost moaveze-btn-sm">پاک کردن</button>
-                <button id="toggle-map-view" class="moaveze-btn moaveze-btn-outline moaveze-btn-sm">
+                <button type="button" id="reset-filters" class="moaveze-btn moaveze-btn-ghost moaveze-btn-sm">پاک کردن</button>
+                <button type="button" id="toggle-map-view" class="moaveze-btn moaveze-btn-outline moaveze-btn-sm">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/></svg>
                     نقشه
                 </button>

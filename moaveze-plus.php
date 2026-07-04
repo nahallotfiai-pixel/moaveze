@@ -3,7 +3,7 @@
  * Plugin Name: معاوضه پلاس (Moaveze Plus)
  * Plugin URI: https://tabrizhome.com
  * Description: سیستم پیشرفته معاوضه ملک با قابلیت تطبیق هوشمند، معاوضه زنجیره‌ای، نقشه تعاملی و مدیریت کامل
- * Version: 1.0.0
+ * Version: 1.5.0
  * Author: تبریز هوم
  * Author URI: https://tabrizhome.com
  * License: GPL v2 or later
@@ -19,7 +19,15 @@ if (!defined('ABSPATH')) {
 }
 
 // Plugin Constants
-define('MOAVEZE_PLUS_VERSION', '1.0.0');
+// NOTE: this is now ONLY the human-readable version shown in
+// wp-admin > Plugins (and used as the DB-upgrade-check fallback) - it
+// has NO effect on browser caching of CSS/JS anymore. See
+// moaveze_asset_version() below, which busts the cache automatically
+// using each file's own last-modified time, so this number no longer
+// needs to be bumped on every change just to force a cache refresh.
+// It should still be bumped for real releases so admins can see at a
+// glance that the plugin was updated (Plugins list, changelog, etc).
+define('MOAVEZE_PLUS_VERSION', '1.5.0');
 define('MOAVEZE_PLUS_FILE', __FILE__);
 define('MOAVEZE_PLUS_PATH', plugin_dir_path(__FILE__));
 define('MOAVEZE_PLUS_URL', plugin_dir_url(__FILE__));

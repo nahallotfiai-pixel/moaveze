@@ -13,6 +13,71 @@
             this.initDarkMode();
             this.initSearchableSelects();
             this.initChipSearch();
+            this.initListingsFilters();
+        },
+
+        /**
+         * Listings page filter bar ("جستجو"/"پاک کردن"/"نقشه" buttons -
+         * see Moaveze_Listings::render_filters() in class-listings.php).
+         *
+         * BUG FIX: these buttons previously had NO JavaScript binding
+         * anywhere in the codebase at all - clicking "جستجو" did
+         * nothing because nothing ever read the filter values. Neither
+         * the results grid nor the map ever changed, exactly as
+         * reported.
+         *
+         * Fix approach: reload the page with the selected filter values
+         * as URL query parameters (?moaveze_type=...&moaveze_district=...
+         * etc), which Moaveze_Listings::render_listings() now reads (see
+         * the corresponding PHP fix) to build the WP_Query - this
+         * automatically updates BOTH the results grid and the map,
+         * since the map is populated from the same server-rendered
+         * cards (see MoavezeMap.loadMarkersFromCards() in map.js).
+         * A full page reload is deliberately used instead of an AJAX
+         * partial-refresh here to guarantee 100% consistent behavior
+         * with pagination, browser back/forward, and shareable/
+         * bookmarkable filtered-search URLs - all of which an AJAX-only
+         * approach would need significant extra plumbing to support.
+         */
+        initListingsFilters() {
+            const $filterBar = $('.moaveze-filters-bar');
+            if (!$filterBar.length) return;
+
+            $(document).on('click', '#apply-filters', function() {
+                const params = new URLSearchParams(window.location.search);
+                const setOrDelete = (key, value) => {
+                    if (value) params.set(key, value); else params.delete(key);
+                };
+
+                setOrDelete('moaveze_type', $('#filter-type').val());
+                setOrDelete('moaveze_district', $('#filter-district').val());
+                setOrDelete('moaveze_exchange_type', $('#filter-exchange-type').val());
+                setOrDelete('moaveze_min_value', MoavezePlus.toLatinDigits($('#filter-min-price').val()).replace(/[^\d]/g, ''));
+                setOrDelete('moaveze_max_value', MoavezePlus.toLatinDigits($('#filter-max-price').val()).replace(/[^\d]/g, ''));
+                // Always go back to page 1 of results when the filter
+                // criteria changes - an old page number could otherwise
+                // point past the end of a now-smaller filtered result set.
+                params.delete('paged');
+
+                const query = params.toString();
+                window.location.href = window.location.pathname + (query ? '?' + query : '');
+            });
+
+            $(document).on('click', '#reset-filters', function() {
+                window.location.href = window.location.pathname;
+            });
+
+            $(document).on('click', '#toggle-map-view', function() {
+                const $map = $('#listings-map');
+                $map.slideToggle(200, function() {
+                    // Leaflet needs an explicit size recalculation after
+                    // its container goes from display:none to visible,
+                    // otherwise it renders as a blank/broken grey box.
+                    if ($map.is(':visible') && window.MoavezeMap && window.MoavezeMap.maps.listings) {
+                        window.MoavezeMap.maps.listings.invalidateSize();
+                    }
+                });
+            });
         },
 
         /**
