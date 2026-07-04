@@ -270,10 +270,13 @@ class Moaveze_AI_Valuation {
         return array(
             // Gemini - Google grants a genuinely free daily quota for
             // "flash"/"flash-lite" models; "pro" models are paid-only.
+            'gemini-1.5-flash-lite' => 'رایگان (سهمیه روزانه Google) - سریع اما ساده‌تر، برای ارزش‌گذاری دقیق توصیه نمی‌شود',
             'gemini-1.5-flash'   => 'رایگان (سهمیه روزانه Google)',
             'gemini-1.5-pro'     => 'پولی',
+            'gemini-2.0-flash-lite' => 'رایگان (سهمیه روزانه Google) - سریع اما ساده‌تر، برای ارزش‌گذاری دقیق توصیه نمی‌شود',
             'gemini-2.0-flash'   => 'رایگان (سهمیه روزانه Google)',
             'gemini-2.0-pro'     => 'پولی',
+            'gemini-2.5-flash-lite' => 'رایگان (سهمیه روزانه Google) - سریع اما ساده‌تر، برای ارزش‌گذاری دقیق توصیه نمی‌شود',
             'gemini-2.5-flash'   => 'رایگان (سهمیه روزانه Google)',
             'gemini-2.5-pro'     => 'پولی',
             // OpenAI - never free via API.
@@ -717,6 +720,15 @@ class Moaveze_AI_Valuation {
                             برای فعال‌سازی به <a href="<?php echo admin_url('admin.php?page=moaveze-settings&tab=ai'); ?>">تنظیمات &gt; هوش مصنوعی</a> بروید (فقط با Gemini و بدون رله Cloudflare Worker کار می‌کند).
                         </p>
                     <?php endif; ?>
+                    <?php
+                    $active_model = get_option("moaveze_ai_{$active_provider}_model") ?: $providers[$active_provider]['default_model'];
+                    if ($active_provider === 'gemini' && stripos($active_model, '-lite') !== false) :
+                    ?>
+                        <p class="description" style="color:#92400e;background:#fef3c7;padding:8px 12px;border-radius:8px;">
+                            ⚠ مدل فعلی (<code><?php echo esc_html($active_model); ?></code>) یک مدل «Lite» است که برای دقت تحلیلی بالا (مثل ارزش‌گذاری ملک) بهینه نشده و ممکن است اعداد کمتر دقیقی ارائه دهد. در صورت امکان به یک مدل استاندارد (بدون Lite) از
+                            <a href="<?php echo admin_url('admin.php?page=moaveze-settings&tab=ai'); ?>">تنظیمات &gt; هوش مصنوعی</a> تغییر دهید.
+                        </p>
+                    <?php endif; ?>
                     <button type="button" class="button button-primary valuation-run-ai-btn">
                         <span class="dashicons dashicons-superhero-alt"></span> دریافت پیشنهاد هوش مصنوعی
                     </button>
@@ -924,7 +936,11 @@ class Moaveze_AI_Valuation {
                 'grounded'             => $parsed['grounded'],
                 'items'                => $parsed['comparables'],
                 'all_grounded_sources' => array_map(function ($s) {
-                    return array('title' => $s['title'] ?: 'منبع بدون عنوان', 'url' => $s['resolved'] ?: $s['redirect']);
+                    return array(
+                        'title'   => $s['title'] ?: 'منبع بدون عنوان',
+                        'url'     => $s['resolved'] ?: $s['redirect'],
+                        'is_dead' => $s['is_dead'],
+                    );
                 }, $result['grounded_urls'] ?? array()),
             )),
             'raw_response'     => $result['text'],
@@ -952,8 +968,9 @@ class Moaveze_AI_Valuation {
             // واقعا استناد میکنه یا نه").
             'all_grounded_sources' => array_map(function ($s) {
                 return array(
-                    'title' => $s['title'] ?: 'منبع بدون عنوان',
-                    'url'   => $s['resolved'] ?: $s['redirect'],
+                    'title'   => $s['title'] ?: 'منبع بدون عنوان',
+                    'url'     => $s['resolved'] ?: $s['redirect'],
+                    'is_dead' => $s['is_dead'],
                 );
             }, $result['grounded_urls'] ?? array()),
             'provider'      => self::get_providers()[$provider]['label'] ?? $provider,
@@ -973,7 +990,8 @@ class Moaveze_AI_Valuation {
                 'price_total_short'   => $c['price_total'] ? Moaveze_Helpers::short_price($c['price_total']) : null,
                 'price_per_sqm_short' => $c['price_per_sqm'] ? Moaveze_Helpers::short_price($c['price_per_sqm']) : null,
                 'source_url'          => $c['source_url'] ?? '',
-                // 'verified'            = real page URL resolved and Google-confirmed
+                // 'verified'            = real page URL resolved, Google-confirmed, and still LIVE when checked
+                // 'verified_dead'       = Google-confirmed and resolved, but the page itself now returns 404/410/451 (e.g. a Divar listing removed after being sold) - still real proof a search happened, just an outdated result
                 // 'verified_unresolved' = Google-confirmed but only Google's redirect link is available (page resolution failed)
                 // 'unverified'          = model gave a link Google doesn't independently confirm
                 // 'none'                = no link at all (grounding was off)
@@ -1293,7 +1311,7 @@ PROMPT;
             }
 
             if ($match && $match['resolved']) {
-                $c['url_status'] = 'verified';
+                $c['url_status'] = $match['is_dead'] ? 'verified_dead' : 'verified';
                 $c['source_url'] = $match['resolved'];
             } elseif ($match) {
                 // Google confirmed this source was really used, but our
@@ -1435,10 +1453,21 @@ PROMPT;
         foreach ($chunks as $chunk) {
             if (empty($chunk['web']['uri'])) continue;
             $redirect_url = $chunk['web']['uri'];
+            $resolved = $this->resolve_redirect_url($redirect_url);
             $grounded_urls[] = array(
-                'redirect' => $redirect_url,
-                'resolved' => $this->resolve_redirect_url($redirect_url) ?: '',
-                'title'    => $chunk['web']['title'] ?? '',
+                'redirect'  => $redirect_url,
+                'resolved'  => $resolved['url'] ?: '',
+                // Was the resolved page still actually live when we
+                // just checked it? See resolve_redirect_url() docblock
+                // for why this check exists - a real example the user
+                // hit was a resolved divar.ir/v/... link that returned
+                // HTTP 410 Gone (the listing had since been deleted/
+                // sold on Divar's side) - a link Google's search
+                // genuinely found at crawl time can still go dead by
+                // the time a consultant clicks it later, since Divar
+                // listings are frequently removed once sold/expired.
+                'is_dead'   => $resolved['is_dead'],
+                'title'     => $chunk['web']['title'] ?? '',
             );
         }
 
@@ -1479,22 +1508,36 @@ PROMPT;
         ));
 
         if (is_wp_error($response)) {
-            return null;
+            return array('url' => null, 'is_dead' => null); // couldn't even check - unknown, not necessarily dead
         }
+
+        $status_code = wp_remote_retrieve_response_code($response);
+        // DEAD-LINK DETECTION: per user report, a resolved divar.ir
+        // link Gemini's search genuinely retrieved could still be a
+        // blank/removed page by the time it's clicked (HTTP 410 Gone
+        // in the example, confirmed by directly checking the URL - the
+        // listing had been deleted/sold on Divar's side since the
+        // search happened). 404/410/451 are unambiguous "this specific
+        // page no longer exists" signals; treat anything else as alive
+        // (a real classifieds site legitimately returns other codes
+        // for unrelated reasons, e.g. temporary redirects, bot
+        // challenges, etc, which shouldn't be mislabeled as "dead").
+        $is_dead = in_array($status_code, array(404, 410, 451), true);
 
         // WordPress's HTTP API (backed by the Requests library since
         // WP 4.6) tracks the final URL reached after following the
         // full redirect chain on the wrapped response object - this is
         // the only reliable way to get it via wp_remote_get().
+        $final_url = null;
         $http_response = $response['http_response'] ?? null;
         if ($http_response instanceof WP_HTTP_Requests_Response) {
             $requests_response = $http_response->get_response_object();
             if (!empty($requests_response->url) && $requests_response->url !== $url) {
-                return $requests_response->url;
+                $final_url = $requests_response->url;
             }
         }
 
-        return null;
+        return array('url' => $final_url, 'is_dead' => $is_dead);
     }
 
     /**

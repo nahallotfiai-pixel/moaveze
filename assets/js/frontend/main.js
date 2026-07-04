@@ -20,51 +20,94 @@
          * Listings page filter bar ("جستجو"/"پاک کردن"/"نقشه" buttons -
          * see Moaveze_Listings::render_filters() in class-listings.php).
          *
-         * BUG FIX: these buttons previously had NO JavaScript binding
-         * anywhere in the codebase at all - clicking "جستجو" did
-         * nothing because nothing ever read the filter values. Neither
-         * the results grid nor the map ever changed, exactly as
-         * reported.
+         * BUG FIX HISTORY:
+         *   1. Originally these buttons had NO JavaScript binding at
+         *      all - clicking "جستجو" did nothing because nothing ever
+         *      read the filter values.
+         *   2. A first fix reloaded the page with filter values as URL
+         *      query parameters, which correctly updated the server-
+         *      side WP_Query - but this STILL didn't work on the live
+         *      site, because a page-caching plugin (LiteSpeed/WP
+         *      Rocket/etc - very common on Iran-hosted WordPress, see
+         *      Moaveze_Meta_Fields::purge_listing_cache() elsewhere in
+         *      this plugin) caches a page by its URL PATH and, by
+         *      default, ignores the query string entirely when
+         *      deciding whether to serve a cached copy - so every
+         *      "search" kept re-serving the exact same cached snapshot
+         *      no matter what filters were selected.
          *
-         * Fix approach: reload the page with the selected filter values
-         * as URL query parameters (?moaveze_type=...&moaveze_district=...
-         * etc), which Moaveze_Listings::render_listings() now reads (see
-         * the corresponding PHP fix) to build the WP_Query - this
-         * automatically updates BOTH the results grid and the map,
-         * since the map is populated from the same server-rendered
-         * cards (see MoavezeMap.loadMarkersFromCards() in map.js).
-         * A full page reload is deliberately used instead of an AJAX
-         * partial-refresh here to guarantee 100% consistent behavior
-         * with pagination, browser back/forward, and shareable/
-         * bookmarkable filtered-search URLs - all of which an AJAX-only
-         * approach would need significant extra plumbing to support.
+         * FINAL FIX: filtering now goes through admin-ajax.php
+         * (see Moaveze_Listings::ajax_filter_listings() in
+         * class-listings.php), which every major WordPress caching
+         * plugin excludes from caching by default (since its responses
+         * are inherently dynamic) - reliably bypassing that cache
+         * layer. Only the results-grid HTML is swapped in-place; the
+         * URL is still updated (via history.pushState, no reload) so
+         * filtered views remain shareable/bookmarkable and back/
+         * forward navigation still works.
          */
         initListingsFilters() {
             const $filterBar = $('.moaveze-filters-bar');
-            if (!$filterBar.length) return;
+            const $results = $('.moaveze-listings-results');
+            if (!$filterBar.length || !$results.length) return;
 
-            $(document).on('click', '#apply-filters', function() {
-                const params = new URLSearchParams(window.location.search);
-                const setOrDelete = (key, value) => {
-                    if (value) params.set(key, value); else params.delete(key);
+            const fetchFiltered = (paged = 1, pushState = true) => {
+                const filters = {
+                    moaveze_type: $('#filter-type').val() || '',
+                    moaveze_district: $('#filter-district').val() || '',
+                    moaveze_exchange_type: $('#filter-exchange-type').val() || '',
+                    moaveze_min_value: MoavezePlus.toLatinDigits($('#filter-min-price').val() || '').replace(/[^\d]/g, ''),
+                    moaveze_max_value: MoavezePlus.toLatinDigits($('#filter-max-price').val() || '').replace(/[^\d]/g, ''),
                 };
 
-                setOrDelete('moaveze_type', $('#filter-type').val());
-                setOrDelete('moaveze_district', $('#filter-district').val());
-                setOrDelete('moaveze_exchange_type', $('#filter-exchange-type').val());
-                setOrDelete('moaveze_min_value', MoavezePlus.toLatinDigits($('#filter-min-price').val()).replace(/[^\d]/g, ''));
-                setOrDelete('moaveze_max_value', MoavezePlus.toLatinDigits($('#filter-max-price').val()).replace(/[^\d]/g, ''));
-                // Always go back to page 1 of results when the filter
-                // criteria changes - an old page number could otherwise
-                // point past the end of a now-smaller filtered result set.
-                params.delete('paged');
+                if (pushState) {
+                    const params = new URLSearchParams();
+                    Object.keys(filters).forEach((k) => { if (filters[k]) params.set(k, filters[k]); });
+                    const query = params.toString();
+                    const newUrl = window.location.pathname + (query ? '?' + query : '');
+                    window.history.pushState({ moavezeFilters: filters, paged }, '', newUrl);
+                }
 
-                const query = params.toString();
-                window.location.href = window.location.pathname + (query ? '?' + query : '');
+                $results.addClass('moaveze-loading').css('opacity', '0.5');
+
+                $.post(moavezePlus.ajaxUrl, {
+                    action: 'moaveze_filter_listings',
+                    ...filters,
+                    paged: paged,
+                    per_page: $results.data('per-page'),
+                    style: $results.data('style'),
+                }, function(response) {
+                    $results.removeClass('moaveze-loading').css('opacity', '');
+                    if (response.success) {
+                        $results.html(response.data.html);
+                        // Repopulate the map from the newly-inserted
+                        // cards so it stays in sync with the filtered
+                        // results, exactly like the initial page load.
+                        if (window.MoavezeMap && window.MoavezeMap.maps.listings) {
+                            window.MoavezeMap.loadMarkersFromCards();
+                        }
+                        $('html, body').animate({ scrollTop: $filterBar.offset().top - 100 }, 300);
+                    } else {
+                        MoavezePlus.showToast('خطا در بارگذاری نتایج', 'error');
+                    }
+                }).fail(function() {
+                    $results.removeClass('moaveze-loading').css('opacity', '');
+                    MoavezePlus.showToast('خطا در ارتباط با سرور', 'error');
+                });
+            };
+
+            $(document).on('click', '#apply-filters', function() {
+                fetchFiltered(1, true);
             });
 
             $(document).on('click', '#reset-filters', function() {
-                window.location.href = window.location.pathname;
+                $('#filter-type, #filter-district, #filter-exchange-type').val('');
+                $('#filter-min-price, #filter-max-price').val('');
+                // Also reset any searchable-combobox overlay text (see
+                // initSearchableSelects()) sitting on top of these
+                // <select> elements, since it doesn't auto-sync.
+                $filterBar.find('.moaveze-combobox-input').val('');
+                fetchFiltered(1, true);
             });
 
             $(document).on('click', '#toggle-map-view', function() {
@@ -77,6 +120,32 @@
                         window.MoavezeMap.maps.listings.invalidateSize();
                     }
                 });
+            });
+
+            // Pagination links inside the AJAX-loaded results are
+            // #page-N anchors (see render_results_markup() 'base'/
+            // 'format' in class-listings.php) - intercept clicks and
+            // re-fetch via AJAX instead of letting the browser navigate.
+            $(document).on('click', '.moaveze-listings-results .page-numbers[href*="#page-"]', function(e) {
+                e.preventDefault();
+                const match = $(this).attr('href').match(/#page-(\d+)/);
+                const page = match ? parseInt(match[1], 10) : 1;
+                fetchFiltered(page, false);
+            });
+
+            // Browser back/forward: re-fetch using the filters saved in
+            // the history entry's state (or reset if navigating to the
+            // plain unfiltered URL).
+            $(window).on('popstate', function(e) {
+                const state = e.originalEvent.state;
+                if (state && state.moavezeFilters) {
+                    $('#filter-type').val(state.moavezeFilters.moaveze_type || '');
+                    $('#filter-district').val(state.moavezeFilters.moaveze_district || '');
+                    $('#filter-exchange-type').val(state.moavezeFilters.moaveze_exchange_type || '');
+                    $('#filter-min-price').val(state.moavezeFilters.moaveze_min_value || '');
+                    $('#filter-max-price').val(state.moavezeFilters.moaveze_max_value || '');
+                    fetchFiltered(state.paged || 1, false);
+                }
             });
         },
 

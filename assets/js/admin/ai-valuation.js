@@ -153,6 +153,7 @@
                 const model = $select.val();
 
                 $input.val(model);
+                MoavezeValuation.toggleLiteModelWarning($card, provider, model);
                 $status.text('در حال ذخیره مدل انتخاب‌شده...').css('color', '#64748b');
 
                 $.post(moavezeAdmin.ajaxUrl, {
@@ -182,6 +183,7 @@
 
                 const $card = $input.closest('.moaveze-ai-provider-card');
                 const $status = $card.find('.moaveze-ai-models-status');
+                MoavezeValuation.toggleLiteModelWarning($card, provider, model);
 
                 $.post(moavezeAdmin.ajaxUrl, {
                     action: 'moaveze_save_ai_model',
@@ -194,6 +196,32 @@
                     }
                 });
             });
+        },
+
+        /**
+         * Show/hide the "Lite model not recommended for valuation
+         * accuracy" warning based on the currently-selected model name
+         * - per explicit user report that switching to a Lite model
+         * (to work around a temporary Google rate-limit) produced
+         * noticeably less accurate/reasonable price numbers. Lite
+         * models trade off analytical depth for speed/cost, which
+         * matters for a multi-step reasoning task like property
+         * valuation even though it's fine for simpler tasks.
+         */
+        toggleLiteModelWarning($card, provider, model) {
+            let $warning = $card.find('.moaveze-lite-model-warning');
+            const isLite = provider === 'gemini' && /-lite/i.test(model || '');
+
+            if (isLite && !$warning.length) {
+                $warning = $(`
+                    <p class="description moaveze-lite-model-warning" style="color:#92400e;background:#fef3c7;padding:8px 12px;border-radius:8px;">
+                        ⚠ مدل‌های «Lite» (مثل Flash-Lite) برای سرعت و مصرف کم طراحی شده‌اند، نه برای دقت تحلیلی بالا - برای <strong>ارزش‌گذاری ملک</strong> (که به استدلال چندمرحله‌ای دقیق نیاز دارد) توصیه نمی‌شود و ممکن است اعداد نامنطقی یا کمتر دقیق ارائه دهد. برای بهترین نتیجه، مدل استاندارد (بدون Lite) مثل <code>gemini-2.5-flash</code> یا <code>gemini-2.5-pro</code> را انتخاب کنید. اگر فقط به دلیل محدودیت نرخ (rate limit) از Lite استفاده می‌کنید، پس از رفع ازدحام به مدل استاندارد برگردید.
+                    </p>
+                `);
+                $card.find('.moaveze-ai-models-status').after($warning);
+            } else if (!isLite) {
+                $warning.remove();
+            }
         },
 
         bindRunAI() {
@@ -279,6 +307,18 @@
                             linkCell = `<a href="${c.source_url}" target="_blank" rel="noopener" class="var-source-link var-verified">
                                 ✓ مشاهده آگهی منبع (لینک واقعی - تأییدشده توسط جست‌وجوی گوگل)
                             </a>`;
+                        } else if (c.url_status === 'verified_dead') {
+                            // Real search DID happen and DID find this
+                            // exact page (independently confirmed by
+                            // Google) - the link itself has since gone
+                            // dead (404/410), most likely because the
+                            // Divar listing was removed after being sold
+                            // between when the search ran and now. Shown
+                            // distinctly so the consultant doesn't
+                            // mistake this for a fabricated citation.
+                            linkCell = `<a href="${c.source_url}" target="_blank" rel="noopener" class="var-source-link var-dead">
+                                ⛔ آگهی منبع دیگر در دسترس نیست (احتمالاً حذف/فروخته شده - اما جست‌وجو واقعی بود)
+                            </a>`;
                         } else if (c.url_status === 'verified_unresolved') {
                             linkCell = `<a href="${c.source_url}" target="_blank" rel="noopener" class="var-source-link var-verified">
                                 ✓ مشاهده آگهی منبع (تأییدشده - از طریق لینک واسط گوگل)
@@ -322,7 +362,10 @@
             let allSourcesHtml = '';
             if (d.grounded && d.all_grounded_sources && d.all_grounded_sources.length) {
                 const items = d.all_grounded_sources.map((s) => `
-                    <li><a href="${s.url}" target="_blank" rel="noopener">${s.title || s.url}</a></li>
+                    <li>
+                        <a href="${s.url}" target="_blank" rel="noopener">${s.title || s.url}</a>
+                        ${s.is_dead ? '<span class="var-dead-tag">⛔ دیگر در دسترس نیست</span>' : ''}
+                    </li>
                 `).join('');
                 allSourcesHtml = `
                     <details class="var-all-sources">

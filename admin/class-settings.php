@@ -557,6 +557,11 @@ class Moaveze_Settings {
                         <input type="text" id="moaveze_ai_<?php echo esc_attr($key); ?>_model" class="regular-text moaveze-ai-model-input" name="moaveze_ai_<?php echo esc_attr($key); ?>_model" value="<?php echo esc_attr(get_option("moaveze_ai_{$key}_model")); ?>" dir="ltr" placeholder="<?php echo esc_attr($p['default_model']); ?>" data-provider="<?php echo esc_attr($key); ?>">
                         <select class="moaveze-ai-model-select" style="display:none;margin-top:6px;width:100%;" dir="ltr"></select>
                         <p class="moaveze-ai-models-status description"></p>
+                        <?php if ($key === 'gemini' && stripos(get_option("moaveze_ai_{$key}_model"), '-lite') !== false) : ?>
+                            <p class="description moaveze-lite-model-warning" style="color:#92400e;background:#fef3c7;padding:8px 12px;border-radius:8px;">
+                                ⚠ مدل‌های «Lite» (مثل Flash-Lite) برای سرعت و مصرف کم طراحی شده‌اند، نه برای دقت تحلیلی بالا - برای <strong>ارزش‌گذاری ملک</strong> (که به استدلال چندمرحله‌ای دقیق نیاز دارد) توصیه نمی‌شود و ممکن است اعداد نامنطقی یا کمتر دقیق ارائه دهد. برای بهترین نتیجه، مدل استاندارد (بدون Lite) مثل <code>gemini-2.5-flash</code> یا <code>gemini-2.5-pro</code> را انتخاب کنید. اگر فقط به دلیل محدودیت نرخ (rate limit) از Lite استفاده می‌کنید، پس از رفع ازدحام به مدل استاندارد برگردید.
+                            </p>
+                        <?php endif; ?>
                         <p class="description">با کلیک روی «دریافت لیست مدل‌های موجود»، مدل‌های واقعاً در دسترس این حساب به همراه وضعیت رایگان/پولی یا هزینه تقریبی نمایش داده می‌شود. انتخاب یک مدل از لیست بلافاصله و جداگانه ذخیره می‌شود (نیازی به زدن «ذخیره تنظیمات» فقط برای این فیلد نیست).</p>
                     </div>
                 </div>

@@ -14,6 +14,151 @@ class Moaveze_Listings {
         add_shortcode('moaveze_single', array($this, 'render_single'));
         add_filter('single_template', array($this, 'single_template'));
         add_filter('archive_template', array($this, 'archive_template'));
+        add_action('wp_ajax_moaveze_filter_listings', array($this, 'ajax_filter_listings'));
+        add_action('wp_ajax_nopriv_moaveze_filter_listings', array($this, 'ajax_filter_listings'));
+    }
+
+    /**
+     * AJAX: re-run the listings query with new filter values and
+     * return just the results-grid + pagination HTML.
+     *
+     * ROOT CAUSE OF "بازم سرچ آگهی کار نمیکنه" (search still not
+     * working) after the previous full-page-reload+query-string fix:
+     * on a live, Iran-hosted WordPress site, a page-caching plugin
+     * (LiteSpeed/WP Rocket/etc - already documented elsewhere in this
+     * plugin, see purge_listing_cache()) almost always caches a page
+     * by its URL PATH and serves the exact same cached HTML snapshot
+     * regardless of the query string appended to it (this is standard,
+     * default behavior for most caching plugins, specifically to avoid
+     * an attacker being able to bust the cache with junk query params).
+     * So reloading with "?moaveze_type=..." kept hitting the SAME
+     * cached page every time - neither the results nor the map ever
+     * changed, exactly as reported, even though the underlying PHP
+     * query-building logic was already correct.
+     *
+     * FIX: filtering now happens via wp-admin's admin-ajax.php endpoint
+     * instead of a normal page load. admin-ajax.php requests are
+     * excluded from caching by every major WordPress caching plugin by
+     * default (LiteSpeed, WP Rocket, W3TC, WP Super Cache, SG
+     * Optimizer all special-case it) precisely because its responses
+     * are expected to be dynamic - so this reliably bypasses the exact
+     * cache layer that was silently defeating the previous fix.
+     */
+    public function ajax_filter_listings() {
+        $params = array(
+            'type'          => sanitize_text_field($_POST['moaveze_type'] ?? ''),
+            'district'      => sanitize_text_field($_POST['moaveze_district'] ?? ''),
+            'exchange_type' => sanitize_text_field($_POST['moaveze_exchange_type'] ?? ''),
+            'min_value'     => absint(preg_replace('/[^\d]/', '', $_POST['moaveze_min_value'] ?? '')),
+            'max_value'     => absint(preg_replace('/[^\d]/', '', $_POST['moaveze_max_value'] ?? '')),
+            'paged'         => max(1, absint($_POST['paged'] ?? 1)),
+            'per_page'      => absint($_POST['per_page'] ?? get_option('moaveze_listings_per_page', 12)),
+            'style'         => sanitize_key($_POST['style'] ?? get_option('moaveze_cards_style', 'modern')),
+        );
+
+        $query = $this->build_listings_query($params);
+
+        ob_start();
+        $this->render_results_markup($query, $params);
+        $html = ob_get_clean();
+        wp_reset_postdata();
+
+        wp_send_json_success(array(
+            'html'  => $html,
+            'count' => (int) $query->found_posts,
+        ));
+    }
+
+    /**
+     * Build the WP_Query for the listings grid from a normalized params
+     * array - shared between the initial shortcode render (server-side,
+     * reading values already resolved by render_listings()) and the
+     * AJAX filter endpoint above, so the two can never drift apart.
+     */
+    private function build_listings_query($params) {
+        $args = array(
+            'post_type'      => 'moaveze_exchange',
+            'post_status'    => 'publish',
+            'posts_per_page' => $params['per_page'],
+            'paged'          => $params['paged'],
+            'orderby'        => 'date',
+            'order'          => 'DESC',
+        );
+
+        $tax_query = array();
+        if (!empty($params['type'])) {
+            $tax_query[] = array('taxonomy' => 'moaveze_property_type', 'field' => 'slug', 'terms' => $params['type']);
+        }
+        if (!empty($params['district'])) {
+            $tax_query[] = array('taxonomy' => 'moaveze_district', 'field' => 'slug', 'terms' => $params['district']);
+        }
+        if (!empty($tax_query)) {
+            $args['tax_query'] = $tax_query;
+        }
+
+        $meta_query = array();
+        if (!empty($params['min_value'])) {
+            $meta_query[] = array('key' => '_moaveze_property_value', 'value' => $params['min_value'], 'compare' => '>=', 'type' => 'NUMERIC');
+        }
+        if (!empty($params['max_value'])) {
+            $meta_query[] = array('key' => '_moaveze_property_value', 'value' => $params['max_value'], 'compare' => '<=', 'type' => 'NUMERIC');
+        }
+        if (!empty($params['exchange_type'])) {
+            $meta_query[] = array('key' => '_moaveze_exchange_type', 'value' => $params['exchange_type'], 'compare' => '=');
+        }
+        if (!empty($meta_query)) {
+            $args['meta_query'] = $meta_query;
+        }
+
+        return new WP_Query($args);
+    }
+
+    /**
+     * Render just the results-grid + pagination markup (no filter bar,
+     * no map container) - shared between the initial page load and the
+     * AJAX re-filter endpoint, since only this part ever needs to be
+     * swapped out when filters change.
+     */
+    private function render_results_markup($query, $params) {
+        ?>
+        <div class="moaveze-listings-grid moaveze-style-<?php echo esc_attr($params['style']); ?>">
+            <?php if ($query->have_posts()) : ?>
+                <?php while ($query->have_posts()) : $query->the_post(); ?>
+                    <?php $this->render_card(get_the_ID(), $params['style']); ?>
+                <?php endwhile; ?>
+            <?php else : ?>
+                <div class="moaveze-empty-state">
+                    <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                    </svg>
+                    <h3>آگهی معاوضه‌ای یافت نشد</h3>
+                    <p>با تغییر فیلترها یا ثبت آگهی جدید شروع کنید.</p>
+                </div>
+            <?php endif; ?>
+        </div>
+
+        <?php if ($query->max_num_pages > 1) : ?>
+            <div class="moaveze-pagination" data-ajax-pagination="1">
+                <?php
+                echo paginate_links(array(
+                    'total'     => $query->max_num_pages,
+                    'current'   => $params['paged'],
+                    'prev_text' => '&rarr;',
+                    'next_text' => '&larr;',
+                    // Keep links as plain #-anchors carrying the page
+                    // number in a data attribute for JS to intercept -
+                    // see bindAjaxPagination() in main.js. The real
+                    // href is irrelevant since JS always preventDefault()s
+                    // and reads $(this).data('page') instead; base/format
+                    // just need to produce distinct href values so
+                    // paginate_links() generates one link per page.
+                    'base'      => '#page-%#%',
+                    'format'    => '#page-%#%',
+                ));
+                ?>
+            </div>
+        <?php endif; ?>
+        <?php
     }
 
     /**
@@ -43,7 +188,18 @@ class Moaveze_Listings {
     }
 
     /**
-     * Render listings grid shortcode
+     * Render listings grid shortcode.
+     *
+     * Filtering is handled entirely client-side via AJAX after this
+     * initial render (see ajax_filter_listings() above and
+     * initListingsFilters() in main.js) - specifically to bypass page-
+     * caching plugins that ignore query strings on a normal page load
+     * (see the detailed explanation on ajax_filter_listings()). The
+     * $_GET fallback below only supports deep-linking to a
+     * pre-filtered view (e.g. a shared/bookmarked URL, or a link from
+     * elsewhere on the site with ?moaveze_district=... already in it)
+     * for the FIRST page load only; every filter interaction after
+     * that goes through AJAX.
      */
     public function render_listings($atts) {
         $atts = shortcode_atts(array(
@@ -57,90 +213,18 @@ class Moaveze_Listings {
             'show_filters'  => 'yes',
         ), $atts);
 
-        // BUG FIX ("قسمت جستجو در قسمت آگهی ها کار نمیکنه"): the
-        // #apply-filters/#reset-filters/#toggle-map-view buttons in
-        // render_filters() below had ZERO JavaScript binding anywhere
-        // in the codebase - clicking "جستجو" did nothing because no
-        // code ever read the filter values and did anything with them.
-        // This shortcode only ever read its own $atts (fixed values set
-        // when the shortcode was inserted), never anything from the
-        // current request - so there was no mechanism for a filter
-        // change to affect the query even in principle.
-        //
-        // Fix: the new JS (initListingsFilters() in main.js) submits
-        // the filter values as URL query parameters and reloads the
-        // page, and this method now reads those same query parameters
-        // as a fallback whenever the shortcode attribute itself wasn't
-        // explicitly fixed - exactly mirroring how WordPress's own
-        // paginate_links() 'paged' parameter already worked (which is
-        // why pagination worked while filtering never did).
-        $type = $atts['type'] ?: sanitize_text_field($_GET['moaveze_type'] ?? '');
-        $district = $atts['district'] ?: sanitize_text_field($_GET['moaveze_district'] ?? '');
-        $exchange_type = sanitize_text_field($_GET['moaveze_exchange_type'] ?? '');
-        $min_value = $atts['min_value'] ?: absint(preg_replace('/[^\d]/', '', $_GET['moaveze_min_value'] ?? ''));
-        $max_value = $atts['max_value'] ?: absint(preg_replace('/[^\d]/', '', $_GET['moaveze_max_value'] ?? ''));
-
-        $paged = get_query_var('paged') ? get_query_var('paged') : 1;
-
-        $args = array(
-            'post_type'      => 'moaveze_exchange',
-            'post_status'    => 'publish',
-            'posts_per_page' => $atts['per_page'],
-            'paged'          => $paged,
-            'orderby'        => 'date',
-            'order'          => 'DESC',
+        $params = array(
+            'type'          => $atts['type'] ?: sanitize_text_field($_GET['moaveze_type'] ?? ''),
+            'district'      => $atts['district'] ?: sanitize_text_field($_GET['moaveze_district'] ?? ''),
+            'exchange_type' => sanitize_text_field($_GET['moaveze_exchange_type'] ?? ''),
+            'min_value'     => $atts['min_value'] ?: absint(preg_replace('/[^\d]/', '', $_GET['moaveze_min_value'] ?? '')),
+            'max_value'     => $atts['max_value'] ?: absint(preg_replace('/[^\d]/', '', $_GET['moaveze_max_value'] ?? '')),
+            'paged'         => get_query_var('paged') ? (int) get_query_var('paged') : 1,
+            'per_page'      => $atts['per_page'],
+            'style'         => $atts['style'],
         );
 
-        // Tax queries
-        $tax_query = array();
-        if (!empty($type)) {
-            $tax_query[] = array(
-                'taxonomy' => 'moaveze_property_type',
-                'field'    => 'slug',
-                'terms'    => $type,
-            );
-        }
-        if (!empty($district)) {
-            $tax_query[] = array(
-                'taxonomy' => 'moaveze_district',
-                'field'    => 'slug',
-                'terms'    => $district,
-            );
-        }
-        if (!empty($tax_query)) {
-            $args['tax_query'] = $tax_query;
-        }
-
-        // Meta queries for value range + exchange type
-        $meta_query = array();
-        if (!empty($min_value)) {
-            $meta_query[] = array(
-                'key'     => '_moaveze_property_value',
-                'value'   => $min_value,
-                'compare' => '>=',
-                'type'    => 'NUMERIC',
-            );
-        }
-        if (!empty($max_value)) {
-            $meta_query[] = array(
-                'key'     => '_moaveze_property_value',
-                'value'   => $max_value,
-                'compare' => '<=',
-                'type'    => 'NUMERIC',
-            );
-        }
-        if (!empty($exchange_type)) {
-            $meta_query[] = array(
-                'key'     => '_moaveze_exchange_type',
-                'value'   => $exchange_type,
-                'compare' => '=',
-            );
-        }
-        if (!empty($meta_query)) {
-            $args['meta_query'] = $meta_query;
-        }
-
-        $query = new WP_Query($args);
+        $query = $this->build_listings_query($params);
 
         ob_start();
         ?>
@@ -154,35 +238,13 @@ class Moaveze_Listings {
                     <div class="moaveze-listings-map" id="listings-map"></div>
                 <?php endif; ?>
 
-                <div class="moaveze-listings-grid moaveze-style-<?php echo esc_attr($atts['style']); ?>">
-                    <?php if ($query->have_posts()) : ?>
-                        <?php while ($query->have_posts()) : $query->the_post(); ?>
-                            <?php $this->render_card(get_the_ID(), $atts['style']); ?>
-                        <?php endwhile; ?>
-                    <?php else : ?>
-                        <div class="moaveze-empty-state">
-                            <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-                            </svg>
-                            <h3>آگهی معاوضه‌ای یافت نشد</h3>
-                            <p>با تغییر فیلترها یا ثبت آگهی جدید شروع کنید.</p>
-                        </div>
-                    <?php endif; ?>
+                <!-- data-per-page/data-style let the JS AJAX filter
+                     handler re-send the same settings on every
+                     subsequent filter/page-change request. -->
+                <div class="moaveze-listings-results" data-per-page="<?php echo esc_attr($atts['per_page']); ?>" data-style="<?php echo esc_attr($atts['style']); ?>">
+                    <?php $this->render_results_markup($query, $params); ?>
                 </div>
             </div>
-
-            <?php if ($query->max_num_pages > 1) : ?>
-                <div class="moaveze-pagination">
-                    <?php
-                    echo paginate_links(array(
-                        'total'   => $query->max_num_pages,
-                        'current' => $paged,
-                        'prev_text' => '&rarr;',
-                        'next_text' => '&larr;',
-                    ));
-                    ?>
-                </div>
-            <?php endif; ?>
         </div>
         <?php
         wp_reset_postdata();
