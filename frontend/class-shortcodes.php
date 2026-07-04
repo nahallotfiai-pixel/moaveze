@@ -144,7 +144,24 @@ class Moaveze_Shortcodes {
     }
 
     /**
-     * Search widget
+     * Search widget ([moaveze_search] - a separate, standalone search
+     * box, distinct from the filter bar on the listings page itself).
+     *
+     * BUG FIX (part of the full search overhaul): this form submitted
+     * completely different field names (property_type, district,
+     * min_value, max_value) than what Moaveze_Listings::render_listings()
+     * actually reads ($_GET['moaveze_type'], ['moaveze_district'],
+     * ['moaveze_min_value'], ['moaveze_max_value']) - so this widget's
+     * search never had any effect on the listings page at all, no
+     * matter what was selected. Field names now match exactly.
+     *
+     * Also switched <select> values from term SLUG to term ID, for the
+     * same reason documented in detail in
+     * Moaveze_Listings::build_listings_query(): even though a plain
+     * HTML GET form submit (unlike the AJAX filter bar) doesn't hit
+     * jQuery's double-encoding bug, using term IDs everywhere keeps
+     * every entry point into the listings query consistent and equally
+     * immune to any future encoding edge case.
      */
     public function render_search_widget() {
         ob_start();
@@ -153,24 +170,24 @@ class Moaveze_Shortcodes {
             <div class="moaveze-search-widget">
                 <h3>جستجوی معاوضه</h3>
                 <form class="moaveze-search-form" action="<?php echo esc_url(Moaveze_Pages::get_listings_url()); ?>" method="get">
-                    <select name="property_type">
+                    <select name="moaveze_type">
                         <option value="">نوع ملک</option>
                         <?php
                         $types = get_terms(array('taxonomy' => 'moaveze_property_type', 'hide_empty' => false));
                         if (!is_wp_error($types)) : foreach ($types as $t) : ?>
-                            <option value="<?php echo esc_attr($t->slug); ?>"><?php echo esc_html($t->name); ?></option>
+                            <option value="<?php echo esc_attr($t->term_id); ?>"><?php echo esc_html($t->name); ?></option>
                         <?php endforeach; endif; ?>
                     </select>
-                    <select name="district">
+                    <select name="moaveze_district">
                         <option value="">منطقه</option>
                         <?php
                         $districts = get_terms(array('taxonomy' => 'moaveze_district', 'hide_empty' => false));
                         if (!is_wp_error($districts)) : foreach ($districts as $d) : ?>
-                            <option value="<?php echo esc_attr($d->slug); ?>"><?php echo esc_html($d->name); ?></option>
+                            <option value="<?php echo esc_attr($d->term_id); ?>"><?php echo esc_html($d->name); ?></option>
                         <?php endforeach; endif; ?>
                     </select>
-                    <input type="text" name="min_value" placeholder="حداقل قیمت" class="moaveze-price-input">
-                    <input type="text" name="max_value" placeholder="حداکثر قیمت" class="moaveze-price-input">
+                    <input type="text" name="moaveze_min_value" placeholder="حداقل قیمت" class="moaveze-price-input">
+                    <input type="text" name="moaveze_max_value" placeholder="حداکثر قیمت" class="moaveze-price-input">
                     <button type="submit" class="moaveze-btn moaveze-btn-primary">جستجو</button>
                 </form>
             </div>

@@ -334,6 +334,7 @@
                             <td>${c.description || '—'}</td>
                             <td>${c.price_total_short || '—'}</td>
                             <td>${c.price_per_sqm_short || '—'}</td>
+                            <td>${c.listing_date ? c.listing_date : '<span class="var-no-date">نامشخص</span>'}</td>
                             <td>${linkCell}</td>
                         </tr>
                     `;
@@ -342,7 +343,7 @@
                     <div class="var-comparables-table">
                         <strong>موارد مشابه بررسی‌شده:</strong>
                         <table>
-                            <thead><tr><th>توضیح</th><th>ارزش کل</th><th>قیمت هر متر</th><th>منبع</th></tr></thead>
+                            <thead><tr><th>توضیح</th><th>ارزش کل</th><th>قیمت هر متر</th><th>تاریخ آگهی</th><th>منبع</th></tr></thead>
                             <tbody>${rows}</tbody>
                         </table>
                     </div>

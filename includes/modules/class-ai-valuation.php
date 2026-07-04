@@ -990,6 +990,12 @@ class Moaveze_AI_Valuation {
                 'price_total_short'   => $c['price_total'] ? Moaveze_Helpers::short_price($c['price_total']) : null,
                 'price_per_sqm_short' => $c['price_per_sqm'] ? Moaveze_Helpers::short_price($c['price_per_sqm']) : null,
                 'source_url'          => $c['source_url'] ?? '',
+                // Per explicit user request: the comparable listing's
+                // own publish/update date, as reported by the AI from
+                // the real page it visited (empty if not available/not
+                // grounded) - shown next to each comparable so the
+                // consultant can judge how current it is.
+                'listing_date'        => $c['listing_date'] ?? '',
                 // 'verified'            = real page URL resolved, Google-confirmed, and still LIVE when checked
                 // 'verified_dead'       = Google-confirmed and resolved, but the page itself now returns 404/410/451 (e.g. a Divar listing removed after being sold) - still real proof a search happened, just an outdated result
                 // 'verified_unresolved' = Google-confirmed but only Google's redirect link is available (page resolution failed)
@@ -1147,7 +1153,7 @@ TXT;
   "methodology_summary": "<۲-۳ جمله فارسی: قیمت پایه هر متر منطقه که فرض کردی + مهم‌ترین عوامل تعدیل‌کننده که اعمال کردی و جهت هرکدام (مثبت/منفی)>",
   "reasoning": "<تحلیل فنی و مبتنی بر داده، حداکثر ۵-۶ جمله فارسی، درباره دلیل این ارزش‌گذاری، مقایسه با قیمت ادعایی مالک، و هرگونه ریسک یا نقطه ضعف در داده‌های موجود>",
   "comparables": [
-    {"description": "<توضیح کوتاه نمونه مشابه اول: منطقه، متراژ، سال ساخت>", "price_total": <عدد تومان>, "price_per_sqm": <عدد تومان>, "source_url": "<لینک کامل و واقعی آگهی منبع، یا رشته خالی اگر واقعی نیست>"}
+    {"description": "<توضیح کوتاه نمونه مشابه اول: منطقه، متراژ، سال ساخت>", "price_total": <عدد تومان>, "price_per_sqm": <عدد تومان>, "source_url": "<لینک کامل و واقعی آگهی منبع، یا رشته خالی اگر واقعی نیست>", "listing_date": "<تاریخ انتشار یا آخرین بروزرسانی این آگهی، اگر از صفحه واقعی آن قابل مشاهده بود (میلادی یا شمسی، هرکدام که در صفحه نوشته شده)؛ در غیر این صورت رشته خالی>"}
   ]
 }
 PROMPT;
@@ -1243,6 +1249,13 @@ PROMPT;
                     // cross-checks each URL against Google's own
                     // grounding-verified list before trusting it.
                     'source_url'    => filter_var($raw_url, FILTER_VALIDATE_URL) ? $raw_url : '',
+                    // Per explicit user request: show the comparable
+                    // listing's own publish/update date (as read
+                    // directly off its real page during the search) so
+                    // the consultant can judge how current a comparable
+                    // actually is - not derived/guessed, only ever
+                    // whatever the model reports seeing on the page.
+                    'listing_date'  => sanitize_text_field($c['listing_date'] ?? ''),
                 );
             }
         }

@@ -45,9 +45,14 @@ class Moaveze_Listings {
      * cache layer that was silently defeating the previous fix.
      */
     public function ajax_filter_listings() {
+        // 'type'/'district' are the filter <select> values, now plain
+        // numeric term IDs (see build_listings_query() docblock) -
+        // absint() here, not sanitize_text_field(), since a slug
+        // string would just become 0 and correctly disable that filter
+        // clause rather than accidentally matching something wrong.
         $params = array(
-            'type'          => sanitize_text_field($_POST['moaveze_type'] ?? ''),
-            'district'      => sanitize_text_field($_POST['moaveze_district'] ?? ''),
+            'type'          => absint($_POST['moaveze_type'] ?? 0),
+            'district'      => absint($_POST['moaveze_district'] ?? 0),
             'exchange_type' => sanitize_text_field($_POST['moaveze_exchange_type'] ?? ''),
             'min_value'     => absint(preg_replace('/[^\d]/', '', $_POST['moaveze_min_value'] ?? '')),
             'max_value'     => absint(preg_replace('/[^\d]/', '', $_POST['moaveze_max_value'] ?? '')),
@@ -85,12 +90,40 @@ class Moaveze_Listings {
             'order'          => 'DESC',
         );
 
+        // ROOT CAUSE of "سرچ کار نمیکنه" (search never actually
+        // filtering, confirmed live: filtered and unfiltered requests
+        // to ajax_filter_listings() returned IDENTICAL results):
+        // WordPress stores Persian-language taxonomy SLUGS as raw
+        // percent-encoded UTF-8 bytes (e.g. "%d8%a2%d9%be..." for
+        // "آپارتمان" - independently confirmed via this site's own REST
+        // API). The filter <select> values used to be these slugs.
+        // jQuery's $.post()/$.param() correctly URL-encodes every value
+        // in the data object before sending it - but since the slug was
+        // ALREADY percent-encoded text, jQuery encoded it AGAIN
+        // ("%d8" became "%25d8"), so PHP's $_POST received a corrupted
+        // value that matched no real term at all - tax_query then
+        // silently matched nothing, and the code fell through to
+        // showing the unfiltered result set. Verified directly against
+        // the live admin-ajax.php endpoint: sending the slug through
+        // jQuery's normal encoding path returned all 10 listings
+        // unfiltered, while sending the identical slug WITHOUT the
+        // extra encoding layer correctly returned only the 4 real
+        // apartments.
+        //
+        // PERMANENT FIX (same pattern already applied to the
+        // submission form for this exact reason - see
+        // Moaveze_Submission_Form::set_taxonomy_by_slug()): the filter
+        // <select> options now submit the term's plain numeric ID
+        // instead of its slug (see render_filters() below) - a plain
+        // integer has no encoding to double-apply, eliminating this
+        // entire bug class permanently rather than special-casing the
+        // encoding here.
         $tax_query = array();
         if (!empty($params['type'])) {
-            $tax_query[] = array('taxonomy' => 'moaveze_property_type', 'field' => 'slug', 'terms' => $params['type']);
+            $tax_query[] = $this->resolve_type_district_tax_query('moaveze_property_type', $params['type']);
         }
         if (!empty($params['district'])) {
-            $tax_query[] = array('taxonomy' => 'moaveze_district', 'field' => 'slug', 'terms' => $params['district']);
+            $tax_query[] = $this->resolve_type_district_tax_query('moaveze_district', $params['district']);
         }
         if (!empty($tax_query)) {
             $args['tax_query'] = $tax_query;
@@ -111,6 +144,24 @@ class Moaveze_Listings {
         }
 
         return new WP_Query($args);
+    }
+
+    /**
+     * Build one tax_query clause accepting EITHER a numeric term ID
+     * (the normal case now - see build_listings_query() docblock for
+     * why) or a slug string (kept working for [moaveze_listings
+     * type="apartment"]-style hand-authored shortcode attributes,
+     * which never touch jQuery's double-encoding problem since
+     * they're plain PHP string literals, not a value round-tripped
+     * through a browser AJAX request).
+     */
+    private function resolve_type_district_tax_query($taxonomy, $value) {
+        $is_id = is_numeric($value) && (int) $value == $value;
+        return array(
+            'taxonomy' => $taxonomy,
+            'field'    => $is_id ? 'term_id' : 'slug',
+            'terms'    => $is_id ? absint($value) : sanitize_text_field($value),
+        );
     }
 
     /**
@@ -213,9 +264,15 @@ class Moaveze_Listings {
             'show_filters'  => 'yes',
         ), $atts);
 
+        // NOTE: 'type'/'district' here are term IDs (see
+        // build_listings_query() docblock) whenever they come from the
+        // $_GET fallback; a shortcode attribute like [moaveze_listings
+        // type="apartment"] can still legitimately use a slug string
+        // for a fixed, hand-authored embed, so build_listings_query()
+        // resolves either form via resolve_type_district_param() below.
         $params = array(
-            'type'          => $atts['type'] ?: sanitize_text_field($_GET['moaveze_type'] ?? ''),
-            'district'      => $atts['district'] ?: sanitize_text_field($_GET['moaveze_district'] ?? ''),
+            'type'          => $atts['type'] ?: absint($_GET['moaveze_type'] ?? 0),
+            'district'      => $atts['district'] ?: absint($_GET['moaveze_district'] ?? 0),
             'exchange_type' => sanitize_text_field($_GET['moaveze_exchange_type'] ?? ''),
             'min_value'     => $atts['min_value'] ?: absint(preg_replace('/[^\d]/', '', $_GET['moaveze_min_value'] ?? '')),
             'max_value'     => $atts['max_value'] ?: absint(preg_replace('/[^\d]/', '', $_GET['moaveze_max_value'] ?? '')),
@@ -263,8 +320,10 @@ class Moaveze_Listings {
         // fix above) so the filter bar visibly reflects an active search
         // after the page reloads - e.g. after following a link with
         // ?moaveze_district=... or after the "جستجو" button's own reload.
-        $current_type = sanitize_text_field($_GET['moaveze_type'] ?? '');
-        $current_district = sanitize_text_field($_GET['moaveze_district'] ?? '');
+        // These are now term IDs (see build_listings_query() docblock
+        // for why), so compared as integers.
+        $current_type = absint($_GET['moaveze_type'] ?? 0);
+        $current_district = absint($_GET['moaveze_district'] ?? 0);
         $current_exchange_type = sanitize_text_field($_GET['moaveze_exchange_type'] ?? '');
         $current_min = sanitize_text_field($_GET['moaveze_min_value'] ?? '');
         $current_max = sanitize_text_field($_GET['moaveze_max_value'] ?? '');
@@ -274,14 +333,14 @@ class Moaveze_Listings {
                 <select id="filter-type" class="moaveze-filter-select">
                     <option value="">نوع ملک</option>
                     <?php if (!is_wp_error($types)) : foreach ($types as $type) : ?>
-                        <option value="<?php echo esc_attr($type->slug); ?>" <?php selected($current_type, $type->slug); ?>><?php echo esc_html($type->name); ?></option>
+                        <option value="<?php echo esc_attr($type->term_id); ?>" <?php selected($current_type, $type->term_id); ?>><?php echo esc_html($type->name); ?></option>
                     <?php endforeach; endif; ?>
                 </select>
 
                 <select id="filter-district" class="moaveze-filter-select">
                     <option value="">منطقه</option>
                     <?php if (!is_wp_error($districts)) : foreach ($districts as $d) : ?>
-                        <option value="<?php echo esc_attr($d->slug); ?>" <?php selected($current_district, $d->slug); ?>><?php echo esc_html($d->name); ?></option>
+                        <option value="<?php echo esc_attr($d->term_id); ?>" <?php selected($current_district, $d->term_id); ?>><?php echo esc_html($d->name); ?></option>
                     <?php endforeach; endif; ?>
                 </select>
 

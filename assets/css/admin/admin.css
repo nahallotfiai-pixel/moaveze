@@ -894,6 +894,7 @@
 .var-source-link.var-dead { background: #fee2e2; color: #991b1b; }
 .var-dead-tag { color: #991b1b; font-size: 10px; margin-right: 4px; }
 .var-no-link { font-size: 11px; color: #94a3b8; font-style: italic; }
+.var-no-date { font-size: 11px; color: #94a3b8; font-style: italic; }
 .var-all-sources {
     margin-top: 10px;
     background: #f8fafc;
