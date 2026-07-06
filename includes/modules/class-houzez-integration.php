@@ -60,6 +60,60 @@ class Moaveze_Houzez_Integration {
         // hook - no AJAX, no custom query string, no separate request
         // of any kind that a filtering layer could target in isolation.
         add_action('save_post_property', array($this, 'handle_convert_via_metabox_save'));
+
+        // ROOT-CAUSE FIX for "متاباکس معاوضه پلاس اصلاً دیده نمی‌شود،
+        // حتی با لینک انکور": the site owner's screenshot showed the
+        // sidebar 'side' context on this specific edit screen only
+        // ever rendering a small, fixed set of boxes ("اطلاعات بیوار",
+        // "ViraSEO") - our metabox never appeared there at all, and
+        // the #moaveze_send_to_exchange anchor link did not even
+        // scroll to it, strongly suggesting Houzez's customized post
+        // editor renders/repositions 'side' metaboxes via its own JS
+        // after the initial page load (so the anchor target doesn't
+        // exist yet when the browser tries to jump to it - and our box
+        // may not be getting rendered into that sidebar region by
+        // Houzez's own template at all). Rather than fight an opaque,
+        // JS-driven sidebar layout, render the SAME checkbox directly
+        // into the main content column immediately after the post
+        // title - a plain, server-side-rendered, universally supported
+        // WordPress core hook that is guaranteed to be visible the
+        // instant the page loads, no scrolling or JS timing involved.
+        add_action('edit_form_after_title', array($this, 'render_convert_banner_after_title'));
+    }
+
+    /**
+     * Renders the "تبدیل به معاوضه" checkbox/status directly under the
+     * property title - see the edit_form_after_title hookup above for
+     * why this replaced the sidebar metabox as the primary, reliable
+     * home for this action.
+     */
+    public function render_convert_banner_after_title($post) {
+        if (!$post || $post->post_type !== 'property') return;
+        if (!current_user_can('manage_options')) return;
+
+        $exchange_id = get_post_meta($post->ID, '_moaveze_exchange_linked', true);
+        wp_nonce_field('moaveze_send_to_exchange', 'moaveze_send_to_exchange_nonce');
+        ?>
+        <div class="moaveze-convert-banner" style="margin:16px 0;padding:16px 20px;border-radius:10px;border:2px solid #6366f1;background:#eef2ff;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;">
+            <?php if ($exchange_id && get_post($exchange_id)) : ?>
+                <div style="display:flex;align-items:center;gap:8px;color:#065f46;font-weight:700;">
+                    <span class="dashicons dashicons-yes-alt"></span> معاوضه پلاس: این ملک به آگهی معاوضه متصل است
+                </div>
+                <a href="<?php echo esc_url(get_edit_post_link($exchange_id)); ?>" class="button button-primary" target="_blank">
+                    مشاهده آگهی معاوضه
+                </a>
+            <?php else : ?>
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:600;color:#3730a3;flex:1;min-width:280px;">
+                    <input type="checkbox" name="moaveze_convert_to_exchange" value="1" style="width:18px;height:18px;">
+                    <span>
+                        <span class="dashicons dashicons-randomize"></span>
+                        معاوضه پلاس: این ملک را هنگام کلیک روی «به‌روزرسانی» به آگهی معاوضه تبدیل کن
+                    </span>
+                </label>
+                <span style="color:#6366f1;font-size:12px;">تیک بزنید و سپس دکمه «به‌روزرسانی» بالای صفحه را کلیک کنید</span>
+            <?php endif; ?>
+        </div>
+        <?php
     }
 
     /**

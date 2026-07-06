@@ -190,7 +190,7 @@ $query = new WP_Query($query_args);
                                 // already-working "به‌روزرسانی" save
                                 // request.
                             ?>
-                                <a href="<?php echo esc_url(get_edit_post_link($property_id, 'raw') . '#moaveze_send_to_exchange'); ?>"
+                                <a href="<?php echo esc_url(get_edit_post_link($property_id, 'raw')); ?>"
                                    class="button button-primary button-small">
                                     <span class="dashicons dashicons-randomize"></span> تبدیل به معاوضه
                                 </a>
