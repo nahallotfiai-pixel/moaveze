@@ -610,15 +610,25 @@ class Moaveze_Houzez_Integration {
      */
     public function add_exchange_badge_to_content($content) {
         if (!is_singular('property')) return $content;
-        if (get_option('moaveze_houzez_sync') !== 'yes') return $content;
 
         $exchange_id = get_post_meta(get_the_ID(), '_moaveze_exchange_linked', true);
         if (!$exchange_id) return $content;
 
-        $badge = '<div class="moaveze-houzez-badge">';
-        $badge .= '<a href="' . get_permalink($exchange_id) . '" class="moaveze-exchange-link">';
-        $badge .= '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 014-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg>';
-        $badge .= ' امکان معاوضه | مشاهده شرایط';
+        $exchange_post = get_post($exchange_id);
+        if (!$exchange_post || $exchange_post->post_status !== 'publish') return $content;
+
+        // Styled box showing exchange availability with a link to the
+        // exchange listing page where users can see full conditions.
+        $exchange_url = get_permalink($exchange_id);
+        $badge = '<div class="moaveze-houzez-exchange-box" style="margin:20px 0;padding:16px 20px;border-radius:12px;border:2px solid #6366f1;background:linear-gradient(135deg,#eef2ff,#e0e7ff);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">';
+        $badge .= '<div style="display:flex;align-items:center;gap:10px;">';
+        $badge .= '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 014-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg>';
+        $badge .= '<div><strong style="color:#3730a3;font-size:15px;">🔄 قابلیت معاوضه</strong>';
+        $badge .= '<p style="margin:4px 0 0;color:#4338ca;font-size:13px;">این ملک قابل معاوضه است. برای مشاهده شرایط کلیک کنید.</p></div>';
+        $badge .= '</div>';
+        $badge .= '<a href="' . esc_url($exchange_url) . '" style="display:inline-flex;align-items:center;gap:6px;padding:10px 20px;background:#6366f1;color:#fff;border-radius:8px;text-decoration:none;font-weight:700;font-size:14px;" target="_blank">';
+        $badge .= 'مشاهده شرایط معاوضه';
+        $badge .= '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>';
         $badge .= '</a></div>';
 
         return $badge . $content;
@@ -690,7 +700,12 @@ class Moaveze_Houzez_Integration {
     public function handle_convert_exchange_to_property() {
         $exchange_id = absint($_POST['exchange_id'] ?? 0);
 
-        if (!$exchange_id || get_post_type($exchange_id) !== 'moaveze_exchange') {
+        // DEFENSIVE: get_post_type() can return false if the CPT isn't
+        // registered yet at this point in admin-post.php execution.
+        // Use get_post()->post_type directly from the DB row instead,
+        // which doesn't depend on CPT registration timing.
+        $exchange_post = get_post($exchange_id);
+        if (!$exchange_id || !$exchange_post || $exchange_post->post_type !== 'moaveze_exchange') {
             wp_die('شناسه آگهی معاوضه نامعتبر است. <a href="' . esc_url(admin_url('edit.php?post_type=moaveze_exchange')) . '">بازگشت</a>');
         }
 

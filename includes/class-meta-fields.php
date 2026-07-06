@@ -284,6 +284,15 @@ class Moaveze_Meta_Fields {
         );
 
         add_meta_box(
+            'moaveze_gallery_box',
+            'گالری تصاویر',
+            array(__CLASS__, 'render_gallery_box'),
+            'moaveze_exchange',
+            'normal',
+            'high'
+        );
+
+        add_meta_box(
             'moaveze_exchange_conditions',
             'شرایط معاوضه',
             array(__CLASS__, 'render_exchange_conditions_box'),
@@ -469,6 +478,69 @@ class Moaveze_Meta_Fields {
         echo '<span id="moaveze-feature-debug-list">' . (empty($existing_terms) ? '<em>هیچ ویژگی‌ای ثبت نشده</em>' : esc_html(implode('، ', $existing_terms))) . '</span>';
         echo '<p class="description">این خط بلافاصله بعد از کلیک روی هر تیک به‌روزرسانی می‌شود (بدون نیاز به دکمه «به‌روزرسانی») و مستقیماً از پایگاه داده خوانده می‌شود. اگر امکانات اینجا صحیح است ولی در صفحه سایت دیده نمی‌شود، مشکل از کش صفحه سایت است، نه از این افزونه (این افزونه به‌صورت خودکار تلاش می‌کند کش افزونه‌های رایج را هم پاک کند).</p>';
         echo '</div>';
+    }
+
+    /**
+     * Render gallery management meta box - allows admin to see, add,
+     * remove and reorder gallery images directly in the edit screen.
+     */
+    public static function render_gallery_box($post) {
+        $gallery = get_post_meta($post->ID, '_moaveze_gallery', true);
+        if (!is_array($gallery)) $gallery = array();
+        wp_nonce_field('moaveze_gallery_save', '_moaveze_gallery_nonce');
+        ?>
+        <div class="moaveze-gallery-admin">
+            <div class="moaveze-gallery-grid" id="moaveze-gallery-grid">
+                <?php foreach ($gallery as $img_id) :
+                    $img_url = wp_get_attachment_image_url($img_id, 'thumbnail');
+                    if (!$img_url) continue;
+                ?>
+                    <div class="moaveze-gallery-item" data-id="<?php echo esc_attr($img_id); ?>">
+                        <img src="<?php echo esc_url($img_url); ?>" alt="">
+                        <button type="button" class="moaveze-gallery-remove" title="حذف">&times;</button>
+                        <input type="hidden" name="moaveze_gallery_ids[]" value="<?php echo esc_attr($img_id); ?>">
+                    </div>
+                <?php endforeach; ?>
+            </div>
+            <button type="button" class="button button-primary" id="moaveze-gallery-add">
+                <span class="dashicons dashicons-plus-alt2"></span> افزودن تصویر
+            </button>
+            <p class="description">برای حذف تصویر روی × کلیک کنید. تغییرات با زدن «به‌روزرسانی» ذخیره می‌شوند.</p>
+        </div>
+        <style>
+            .moaveze-gallery-grid{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;}
+            .moaveze-gallery-item{position:relative;width:100px;height:100px;border-radius:8px;overflow:hidden;border:2px solid #e2e8f0;}
+            .moaveze-gallery-item img{width:100%;height:100%;object-fit:cover;}
+            .moaveze-gallery-remove{position:absolute;top:2px;right:2px;background:#ef4444;color:#fff;border:none;border-radius:50%;width:22px;height:22px;cursor:pointer;font-size:14px;line-height:22px;text-align:center;}
+        </style>
+        <script>
+        jQuery(function($){
+            // Add images via WP Media Library
+            $('#moaveze-gallery-add').on('click', function(e){
+                e.preventDefault();
+                var frame = wp.media({title:'انتخاب تصاویر گالری', multiple:true, library:{type:'image'}});
+                frame.on('select', function(){
+                    var selection = frame.state().get('selection');
+                    selection.each(function(attachment){
+                        var att = attachment.toJSON();
+                        var thumb = att.sizes && att.sizes.thumbnail ? att.sizes.thumbnail.url : att.url;
+                        var html = '<div class="moaveze-gallery-item" data-id="'+att.id+'">'
+                            + '<img src="'+thumb+'" alt="">'
+                            + '<button type="button" class="moaveze-gallery-remove" title="حذف">&times;</button>'
+                            + '<input type="hidden" name="moaveze_gallery_ids[]" value="'+att.id+'">'
+                            + '</div>';
+                        $('#moaveze-gallery-grid').append(html);
+                    });
+                });
+                frame.open();
+            });
+            // Remove image
+            $(document).on('click', '.moaveze-gallery-remove', function(){
+                $(this).closest('.moaveze-gallery-item').remove();
+            });
+        });
+        </script>
+        <?php
     }
 
     /**
@@ -730,6 +802,12 @@ class Moaveze_Meta_Fields {
 
         if (!current_user_can('edit_post', $post_id)) {
             return;
+        }
+
+        // Save gallery images (from the gallery metabox)
+        if (isset($_POST['_moaveze_gallery_nonce']) && wp_verify_nonce($_POST['_moaveze_gallery_nonce'], 'moaveze_gallery_save')) {
+            $gallery_ids = isset($_POST['moaveze_gallery_ids']) ? array_map('absint', (array) $_POST['moaveze_gallery_ids']) : array();
+            update_post_meta($post_id, '_moaveze_gallery', $gallery_ids);
         }
 
         $fields = self::get_fields();
