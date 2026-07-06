@@ -275,6 +275,7 @@ class Moaveze_Admin {
         $new_columns['exchange_type'] = 'نوع معاوضه';
         $new_columns['status'] = 'وضعیت';
         $new_columns['verified'] = 'تأیید';
+        $new_columns['convert_to_sale'] = 'تبدیل به فروش';
         $new_columns['date'] = 'تاریخ';
         return $new_columns;
     }
@@ -314,6 +315,24 @@ class Moaveze_Admin {
             case 'verified':
                 $verified = get_post_meta($post_id, '_moaveze_verified', true);
                 echo $verified ? '<span class="dashicons dashicons-yes-alt" style="color:#00a32a;"></span>' : '<span class="dashicons dashicons-minus" style="color:#dba617;"></span>';
+                break;
+
+            case 'convert_to_sale':
+                $linked_property = get_post_meta($post_id, '_moaveze_houzez_source_id', true);
+                if ($linked_property && get_post($linked_property)) {
+                    echo '<a href="' . esc_url(get_edit_post_link($linked_property)) . '" class="button button-small" title="مشاهده آگهی فروش">✓ فروش</a>';
+                } else {
+                    ?>
+                    <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" style="display:inline;">
+                        <input type="hidden" name="action" value="moaveze_convert_exchange_to_property">
+                        <input type="hidden" name="exchange_id" value="<?php echo esc_attr($post_id); ?>">
+                        <?php wp_nonce_field('moaveze_convert_exchange_to_property_' . $post_id, '_moaveze_convert_nonce'); ?>
+                        <button type="submit" class="button button-small" onclick="return confirm('تبدیل به آگهی فروش؟');">
+                            تبدیل به فروش
+                        </button>
+                    </form>
+                    <?php
+                }
                 break;
 
             case 'status':

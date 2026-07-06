@@ -24,6 +24,9 @@ class Moaveze_Houzez_Integration {
         // owner saw. Moving it outside the gate fixes this permanently.
         add_action('admin_post_moaveze_convert_property_form', array($this, 'handle_convert_form_submit'));
 
+        // Reverse: exchange listing → Houzez property (sale listing)
+        add_action('admin_post_moaveze_convert_exchange_to_property', array($this, 'handle_convert_exchange_to_property'));
+
         // Only run the rest if Houzez is active (but delay check to
         // 'init' for the same timing reason - see above).
         add_action('init', array($this, 'register_houzez_hooks'), 20);
@@ -518,17 +521,16 @@ class Moaveze_Houzez_Integration {
         }
 
         // Gallery images (copy Houzez gallery attachment IDs).
-        // FIX: Houzez stores the entire gallery as ONE meta row whose
-        // value is itself an array of attachment IDs (confirmed via the
-        // live REST API response for a real property) - NOT as one
-        // separate meta row per image. get_post_meta(..., false)
-        // therefore returned a nested array (an array containing one
-        // array), which would have written the wrong shape into
-        // _moaveze_gallery (every other place in this plugin that reads
-        // _moaveze_gallery expects a flat array of IDs - see
-        // set_post_thumbnail() call in class-submission-form.php).
-        $gallery_raw = get_post_meta($property_id, 'fave_property_images', true);
-        $gallery_ids = is_array($gallery_raw) ? array_map('absint', $gallery_raw) : array();
+        // Houzez stores gallery images as MULTIPLE separate meta rows
+        // all with the same key 'fave_property_images' (confirmed via
+        // the live REST API: "fave_property_images":["277251","277252",
+        // "277253","277254"] — each is a separate meta row). Using
+        // get_post_meta($id, 'fave_property_images', true) only returns
+        // the FIRST one (the featured image) — we need ALL of them via
+        // get_post_meta($id, 'fave_property_images', false) which
+        // returns a flat array of all values for that key.
+        $gallery_ids = get_post_meta($property_id, 'fave_property_images', false);
+        $gallery_ids = array_map('absint', array_filter($gallery_ids));
         if (!empty($gallery_ids)) {
             update_post_meta($exchange_id, '_moaveze_gallery', $gallery_ids);
         }
@@ -679,6 +681,139 @@ class Moaveze_Houzez_Integration {
         }
 
         return $actions;
+    }
+
+    /**
+     * Reverse conversion: exchange listing → Houzez property (sale listing).
+     * Uses the same admin-post.php mechanism as the forward conversion.
+     */
+    public function handle_convert_exchange_to_property() {
+        $exchange_id = absint($_POST['exchange_id'] ?? 0);
+
+        if (!$exchange_id || get_post_type($exchange_id) !== 'moaveze_exchange') {
+            wp_die('شناسه آگهی معاوضه نامعتبر است. <a href="' . esc_url(admin_url('edit.php?post_type=moaveze_exchange')) . '">بازگشت</a>');
+        }
+
+        if (!current_user_can('manage_options')) {
+            wp_die('دسترسی ندارید.');
+        }
+
+        check_admin_referer('moaveze_convert_exchange_to_property_' . $exchange_id, '_moaveze_convert_nonce');
+
+        $redirect_url = admin_url('edit.php?post_type=moaveze_exchange');
+
+        // Check if already has a linked Houzez property
+        $existing_property_id = get_post_meta($exchange_id, '_moaveze_houzez_source_id', true);
+        if ($existing_property_id && get_post($existing_property_id)) {
+            wp_safe_redirect(add_query_arg('moaveze_convert_notice', 'already', $redirect_url));
+            exit;
+        }
+
+        // Read exchange listing data
+        $exchange = get_post($exchange_id);
+        $value = get_post_meta($exchange_id, '_moaveze_property_value', true);
+        $area = get_post_meta($exchange_id, '_moaveze_area_sqm', true);
+        $rooms = get_post_meta($exchange_id, '_moaveze_rooms', true);
+        $year_built = get_post_meta($exchange_id, '_moaveze_year_built', true);
+        $floor = get_post_meta($exchange_id, '_moaveze_floor', true);
+        $total_floors = get_post_meta($exchange_id, '_moaveze_total_floors', true);
+        $lat = get_post_meta($exchange_id, '_moaveze_latitude', true);
+        $lng = get_post_meta($exchange_id, '_moaveze_longitude', true);
+        $address = get_post_meta($exchange_id, '_moaveze_address', true);
+        $gallery = get_post_meta($exchange_id, '_moaveze_gallery', true);
+
+        // Create Houzez property post
+        $property_id = wp_insert_post(array(
+            'post_title'   => $exchange->post_title,
+            'post_content' => $exchange->post_content,
+            'post_type'    => 'property',
+            'post_status'  => 'publish',
+            'post_author'  => $exchange->post_author,
+        ));
+
+        if (is_wp_error($property_id)) {
+            wp_safe_redirect(add_query_arg('moaveze_convert_notice', 'failed', $redirect_url));
+            exit;
+        }
+
+        // Set Houzez meta fields
+        update_post_meta($property_id, 'fave_property_price', $value);
+        update_post_meta($property_id, 'fave_property_size', $area);
+        update_post_meta($property_id, 'fave_property_rooms', $rooms);
+        if ($year_built) update_post_meta($property_id, 'fave_property_year', $year_built);
+        if ($floor && $total_floors) {
+            update_post_meta($property_id, 'fave_f5eb6c866568d9', $floor . ' از ' . $total_floors);
+        }
+        if ($lat && $lng) {
+            update_post_meta($property_id, 'fave_property_map_latitude', $lat);
+            update_post_meta($property_id, 'fave_property_map_longitude', $lng);
+            update_post_meta($property_id, 'fave_property_location', $lat . ',' . $lng . ',14');
+            update_post_meta($property_id, 'fave_property_map_address', $lat . ',' . $lng);
+            update_post_meta($property_id, 'houzez_geolocation_lat', $lat);
+            update_post_meta($property_id, 'houzez_geolocation_long', $lng);
+        }
+        if ($area && $value) {
+            update_post_meta($property_id, 'fave_property_sec_price', round($value / $area));
+        }
+
+        // Copy thumbnail
+        $thumb_id = get_post_thumbnail_id($exchange_id);
+        if ($thumb_id) {
+            set_post_thumbnail($property_id, $thumb_id);
+        }
+
+        // Copy gallery images to Houzez format (separate meta rows)
+        if (!empty($gallery) && is_array($gallery)) {
+            foreach ($gallery as $img_id) {
+                add_post_meta($property_id, 'fave_property_images', absint($img_id));
+            }
+        }
+
+        // Map moaveze_property_type → property_type
+        $type_terms = get_the_terms($exchange_id, 'moaveze_property_type');
+        if ($type_terms && !is_wp_error($type_terms)) {
+            $type_name = $type_terms[0]->name;
+            $houzez_type = get_term_by('name', $type_name, 'property_type');
+            if ($houzez_type) {
+                wp_set_object_terms($property_id, array($houzez_type->term_id), 'property_type');
+            }
+        }
+
+        // Map moaveze_district → property_area
+        $district_terms = get_the_terms($exchange_id, 'moaveze_district');
+        if ($district_terms && !is_wp_error($district_terms)) {
+            $district_name = $district_terms[0]->name;
+            $houzez_area = get_term_by('name', $district_name, 'property_area');
+            if ($houzez_area) {
+                wp_set_object_terms($property_id, array($houzez_area->term_id), 'property_area');
+            }
+        }
+
+        // Map moaveze_feature → property_feature
+        $feature_terms = get_the_terms($exchange_id, 'moaveze_feature');
+        if ($feature_terms && !is_wp_error($feature_terms)) {
+            $feature_names = wp_list_pluck($feature_terms, 'name');
+            foreach ($feature_names as $fname) {
+                $houzez_feature = get_term_by('name', $fname, 'property_feature');
+                if ($houzez_feature) {
+                    wp_set_object_terms($property_id, array($houzez_feature->term_id), 'property_feature', true);
+                }
+            }
+        }
+
+        // Set property_status to "فروش" if it exists
+        $sale_status = get_term_by('name', 'فروش', 'property_status');
+        if (!$sale_status) $sale_status = get_term_by('slug', 'for-sale', 'property_status');
+        if ($sale_status) {
+            wp_set_object_terms($property_id, array($sale_status->term_id), 'property_status');
+        }
+
+        // Link the two posts together
+        update_post_meta($exchange_id, '_moaveze_houzez_source_id', $property_id);
+        update_post_meta($property_id, '_moaveze_exchange_linked', $exchange_id);
+
+        wp_safe_redirect(add_query_arg('moaveze_convert_notice', 'success', $redirect_url));
+        exit;
     }
 }
 

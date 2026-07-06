@@ -133,7 +133,7 @@ $feature_icons = array(
                             <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/>
                         </svg>
                         <?php if ($district_terms) echo esc_html($district_terms[0]->name); ?>
-                        <?php if ($address) echo ' · ' . esc_html($address); ?>
+                        <?php if ($address && !preg_match('/^\d+\.\d+,\d+\.\d+/', trim($address))) echo ' · ' . esc_html($address); ?>
                     </div>
                 </div>
                 <div class="single-hero-price">
