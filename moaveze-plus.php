@@ -3,7 +3,7 @@
  * Plugin Name: معاوضه پلاس (Moaveze Plus)
  * Plugin URI: https://tabrizhome.com
  * Description: سیستم پیشرفته معاوضه ملک با قابلیت تطبیق هوشمند، معاوضه زنجیره‌ای، نقشه تعاملی و مدیریت کامل
- * Version: 2.4.0
+ * Version: 2.5.0
  * Author: تبریز هوم
  * Author URI: https://tabrizhome.com
  * License: GPL v2 or later
@@ -27,7 +27,7 @@ if (!defined('ABSPATH')) {
 // needs to be bumped on every change just to force a cache refresh.
 // It should still be bumped for real releases so admins can see at a
 // glance that the plugin was updated (Plugins list, changelog, etc).
-define('MOAVEZE_PLUS_VERSION', '2.4.0');
+define('MOAVEZE_PLUS_VERSION', '2.5.0');
 define('MOAVEZE_PLUS_FILE', __FILE__);
 define('MOAVEZE_PLUS_PATH', plugin_dir_path(__FILE__));
 define('MOAVEZE_PLUS_URL', plugin_dir_url(__FILE__));
@@ -114,6 +114,7 @@ final class Moaveze_Plus {
         require_once MOAVEZE_PLUS_PATH . 'frontend/class-listings.php';
         require_once MOAVEZE_PLUS_PATH . 'frontend/class-map.php';
         require_once MOAVEZE_PLUS_PATH . 'frontend/class-shortcodes.php';
+        require_once MOAVEZE_PLUS_PATH . 'frontend/class-dashboard.php';
 
         // Sample Data
         require_once MOAVEZE_PLUS_PATH . 'includes/class-sample-data.php';
@@ -180,6 +181,7 @@ final class Moaveze_Plus {
         // /submit-exchange/ 404 by making sure a real page actually
         // exists at activation time, instead of only being linked to.
         Moaveze_Pages::maybe_create_default_pages();
+        Moaveze_Frontend_Dashboard::flush_rules();
 
         // Flush rewrite rules
         flush_rewrite_rules();
