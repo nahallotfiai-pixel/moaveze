@@ -114,6 +114,7 @@ final class Moaveze_Plus {
         require_once MOAVEZE_PLUS_PATH . 'frontend/class-listings.php';
         require_once MOAVEZE_PLUS_PATH . 'frontend/class-map.php';
         require_once MOAVEZE_PLUS_PATH . 'frontend/class-shortcodes.php';
+        require_once MOAVEZE_PLUS_PATH . 'frontend/class-dashboard.php';
 
         // Sample Data
         require_once MOAVEZE_PLUS_PATH . 'includes/class-sample-data.php';
@@ -180,6 +181,11 @@ final class Moaveze_Plus {
         // /submit-exchange/ 404 by making sure a real page actually
         // exists at activation time, instead of only being linked to.
         Moaveze_Pages::maybe_create_default_pages();
+
+        // Register frontend dashboard rewrite rules before flushing
+        if (class_exists('Moaveze_Frontend_Dashboard')) {
+            Moaveze_Frontend_Dashboard::flush_rules();
+        }
 
         // Flush rewrite rules
         flush_rewrite_rules();
