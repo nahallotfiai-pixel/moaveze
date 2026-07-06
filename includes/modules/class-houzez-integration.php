@@ -79,6 +79,49 @@ class Moaveze_Houzez_Integration {
         // WordPress core hook that is guaranteed to be visible the
         // instant the page loads, no scrolling or JS timing involved.
         add_action('edit_form_after_title', array($this, 'render_convert_banner_after_title'));
+
+        // ROOT-CAUSE FIX, ATTEMPT 4 - admin-post.php form handler:
+        // admin-post.php is WordPress core's dedicated handler for
+        // custom form actions via standard <form method="post">. Unlike
+        // admin-ajax.php (which returned 400) or custom GET params
+        // (which were silently stripped) or edit_form_after_title (which
+        // Houzez's custom editor never fires), this is a simple HTML
+        // form POST to a different, core-standard endpoint that
+        // WordPress itself uses for settings forms, exports, etc.
+        add_action('admin_post_moaveze_convert_property_form', array($this, 'handle_convert_form_submit'));
+    }
+
+    /**
+     * Handle the standard HTML form submit from admin-post.php
+     * (action=moaveze_convert_property_form).
+     */
+    public function handle_convert_form_submit() {
+        $property_id = absint($_POST['property_id'] ?? 0);
+
+        if (!$property_id || get_post_type($property_id) !== 'property') {
+            wp_die('شناسه ملک نامعتبر است. <a href="' . esc_url(admin_url('admin.php?page=moaveze-properties')) . '">بازگشت</a>');
+        }
+
+        if (!current_user_can('manage_options')) {
+            wp_die('دسترسی ندارید.');
+        }
+
+        check_admin_referer('moaveze_convert_property_' . $property_id, '_moaveze_convert_nonce');
+
+        $redirect_url = admin_url('admin.php?page=moaveze-properties');
+
+        // Already converted?
+        $existing_exchange_id = get_post_meta($property_id, '_moaveze_exchange_linked', true);
+        if ($existing_exchange_id && get_post($existing_exchange_id)) {
+            wp_safe_redirect(add_query_arg('moaveze_convert_notice', 'already', $redirect_url));
+            exit;
+        }
+
+        // Do the conversion
+        $result = $this->import_single_property($property_id);
+
+        wp_safe_redirect(add_query_arg('moaveze_convert_notice', $result ? 'success' : 'failed', $redirect_url));
+        exit;
     }
 
     /**

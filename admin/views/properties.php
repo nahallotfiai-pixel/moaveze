@@ -170,30 +170,16 @@ $query = new WP_Query($query_args);
                                 <a href="<?php echo esc_url(get_edit_post_link($exchange_id)); ?>" class="button button-small">
                                     مشاهده آگهی معاوضه
                                 </a>
-                            <?php else :
-                                // ROOT-CAUSE FIX (3rd attempt - the
-                                // reliable one): both an AJAX button and
-                                // a custom GET-link action were silently
-                                // blocked/stripped before reaching our
-                                // PHP code on this specific server (see
-                                // class-houzez-integration.php for the
-                                // full diagnosis). A same-page anchor
-                                // link (#...) is a pure client-side
-                                // browser scroll - it never becomes part
-                                // of any HTTP request at all, so it
-                                // cannot be intercepted by whatever is
-                                // blocking the other two mechanisms. It
-                                // takes you straight to the "معاوضه
-                                // پلاس" metabox on the property's own
-                                // edit screen, where a checkbox rides
-                                // along inside Houzez's own native,
-                                // already-working "به‌روزرسانی" save
-                                // request.
-                            ?>
-                                <a href="<?php echo esc_url(get_edit_post_link($property_id, 'raw')); ?>"
-                                   class="button button-primary button-small">
-                                    <span class="dashicons dashicons-randomize"></span> تبدیل به معاوضه
-                                </a>
+                            <?php else : ?>
+                                <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" style="display:inline;">
+                                    <input type="hidden" name="action" value="moaveze_convert_property_form">
+                                    <input type="hidden" name="property_id" value="<?php echo esc_attr($property_id); ?>">
+                                    <?php wp_nonce_field('moaveze_convert_property_' . $property_id, '_moaveze_convert_nonce'); ?>
+                                    <button type="submit" class="button button-primary button-small"
+                                            onclick="return confirm('آیا این ملک به آگهی معاوضه تبدیل شود؟');">
+                                        <span class="dashicons dashicons-randomize"></span> تبدیل به معاوضه
+                                    </button>
+                                </form>
                             <?php endif; ?>
                             <a href="<?php echo esc_url(get_edit_post_link($property_id, 'raw') . '#moaveze_ai_valuation'); ?>" class="button button-small">
                                 <span class="dashicons dashicons-chart-line"></span> ارزش‌گذاری
