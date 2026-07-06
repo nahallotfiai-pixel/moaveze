@@ -11,7 +11,31 @@ if (!defined('ABSPATH')) {
 class Moaveze_Houzez_Integration {
 
     public function __construct() {
-        // Only run if Houzez is active
+        // The admin_post_* hook MUST be registered unconditionally
+        // (outside the is_houzez_active() gate below) because when
+        // admin-post.php fires, the timing of when post_type_exists()
+        // returns true depends on when theme code registers its CPTs
+        // (usually on 'init'). If our constructor runs before 'init'
+        // (which it does - plugins load before the theme's init hooks),
+        // is_houzez_active() returns false and the constructor bails
+        // before reaching any add_action() call, including this one.
+        // admin-post.php then fires do_action('admin_post_...') with no
+        // handler registered, resulting in the blank white page the site
+        // owner saw. Moving it outside the gate fixes this permanently.
+        add_action('admin_post_moaveze_convert_property_form', array($this, 'handle_convert_form_submit'));
+
+        // Only run the rest if Houzez is active (but delay check to
+        // 'init' for the same timing reason - see above).
+        add_action('init', array($this, 'register_houzez_hooks'), 20);
+    }
+
+    /**
+     * Register all Houzez-dependent hooks - delayed to 'init' priority
+     * 20 so that the theme's own 'init' (usually priority 10) has
+     * already run and registered the 'property' CPT, making
+     * post_type_exists('property') reliable at this point.
+     */
+    public function register_houzez_hooks() {
         if (!$this->is_houzez_active()) return;
 
         add_action('wp_ajax_moaveze_import_from_houzez', array($this, 'import_from_houzez'));
@@ -80,14 +104,6 @@ class Moaveze_Houzez_Integration {
         // instant the page loads, no scrolling or JS timing involved.
         add_action('edit_form_after_title', array($this, 'render_convert_banner_after_title'));
 
-        // ROOT-CAUSE FIX, ATTEMPT 4 - admin-post.php form handler:
-        // admin-post.php is WordPress core's dedicated handler for
-        // custom form actions via standard <form method="post">. Unlike
-        // admin-ajax.php (which returned 400) or custom GET params
-        // (which were silently stripped) or edit_form_after_title (which
-        // Houzez's custom editor never fires), this is a simple HTML
-        // form POST to a different, core-standard endpoint that
-        // WordPress itself uses for settings forms, exports, etc.
         add_action('admin_post_moaveze_convert_property_form', array($this, 'handle_convert_form_submit'));
     }
 
