@@ -44,17 +44,23 @@ class Moaveze_Elementor_Loader {
 
         // Load individual widgets
         $widgets = array(
-            'listings'      => 'Moaveze_Widget_Listings',
-            'submit-form'   => 'Moaveze_Widget_Submit_Form',
-            'map'           => 'Moaveze_Widget_Map',
-            'featured'      => 'Moaveze_Widget_Featured',
-            'recent'        => 'Moaveze_Widget_Recent',
-            'stats'         => 'Moaveze_Widget_Stats',
-            'search'        => 'Moaveze_Widget_Search',
-            'my-offers'     => 'Moaveze_Widget_My_Offers',
-            'notifications' => 'Moaveze_Widget_Notifications',
-            'wishlist'      => 'Moaveze_Widget_Wishlist',
-            'auctions'      => 'Moaveze_Widget_Auctions',
+            'listings'         => 'Moaveze_Widget_Listings',
+            'submit-form'      => 'Moaveze_Widget_Submit_Form',
+            'map'              => 'Moaveze_Widget_Map',
+            'featured'         => 'Moaveze_Widget_Featured',
+            'recent'           => 'Moaveze_Widget_Recent',
+            'stats'            => 'Moaveze_Widget_Stats',
+            'search'           => 'Moaveze_Widget_Search',
+            'my-offers'        => 'Moaveze_Widget_My_Offers',
+            'notifications'    => 'Moaveze_Widget_Notifications',
+            'wishlist'         => 'Moaveze_Widget_Wishlist',
+            'auctions'         => 'Moaveze_Widget_Auctions',
+            'expert-valuation' => 'Moaveze_Widget_Expert_Valuation',
+            'public-valuation' => 'Moaveze_Widget_Public_Valuation',
+            'price-estimator'  => 'Moaveze_Widget_Price_Estimator',
+            'compare'          => 'Moaveze_Widget_Compare',
+            'exchange-badge'   => 'Moaveze_Widget_Exchange_Badge',
+            'property-gallery' => 'Moaveze_Widget_Property_Gallery',
         );
 
         foreach ($widgets as $file => $class) {
