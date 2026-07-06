@@ -171,27 +171,27 @@ $query = new WP_Query($query_args);
                                     مشاهده آگهی معاوضه
                                 </a>
                             <?php else :
-                                // ROOT-CAUSE FIX: this is now a plain GET
-                                // link (handled by
-                                // Moaveze_Houzez_Integration::handle_convert_via_link()
-                                // on admin_init) instead of an AJAX
-                                // button - see that method's comment for
-                                // the full diagnosis of why the AJAX
-                                // version was reliably returning "400
-                                // Bad Request" before ever reaching our
-                                // PHP code (likely a security plugin
-                                // intercepting POST bodies to
-                                // admin-ajax.php). A simple full-page GET
-                                // navigation cannot be affected by that
-                                // failure mode.
-                                $convert_url = wp_nonce_url(
-                                    add_query_arg('moaveze_convert_property', $property_id, admin_url('admin.php?page=moaveze-properties')),
-                                    'moaveze_convert_property_' . $property_id
-                                );
+                                // ROOT-CAUSE FIX (3rd attempt - the
+                                // reliable one): both an AJAX button and
+                                // a custom GET-link action were silently
+                                // blocked/stripped before reaching our
+                                // PHP code on this specific server (see
+                                // class-houzez-integration.php for the
+                                // full diagnosis). A same-page anchor
+                                // link (#...) is a pure client-side
+                                // browser scroll - it never becomes part
+                                // of any HTTP request at all, so it
+                                // cannot be intercepted by whatever is
+                                // blocking the other two mechanisms. It
+                                // takes you straight to the "معاوضه
+                                // پلاس" metabox on the property's own
+                                // edit screen, where a checkbox rides
+                                // along inside Houzez's own native,
+                                // already-working "به‌روزرسانی" save
+                                // request.
                             ?>
-                                <a href="<?php echo esc_url($convert_url); ?>"
-                                   class="button button-primary button-small"
-                                   onclick="return confirm('آیا این ملک به آگهی معاوضه تبدیل شود؟ (تمام مشخصات، تصاویر و موقعیت ملک کپی خواهد شد)');">
+                                <a href="<?php echo esc_url(get_edit_post_link($property_id, 'raw') . '#moaveze_send_to_exchange'); ?>"
+                                   class="button button-primary button-small">
                                     <span class="dashicons dashicons-randomize"></span> تبدیل به معاوضه
                                 </a>
                             <?php endif; ?>

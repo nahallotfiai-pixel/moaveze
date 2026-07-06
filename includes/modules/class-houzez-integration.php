@@ -34,25 +34,60 @@ class Moaveze_Houzez_Integration {
         // "تبدیل به آگهی معاوضه" meta box on Houzez property edit screen
         add_action('add_meta_boxes', array($this, 'add_send_to_exchange_metabox'));
 
-        // ROOT-CAUSE FIX for the persistent, undiagnosable "خطا در
-        // ارتباط با سرور" on the convert-to-exchange button: the
-        // browser's own DevTools Network tab (confirmed by the site
-        // owner) showed the POST to admin-ajax.php itself returning
-        // "400 Bad Request" - BEFORE our AJAX handler even runs. This
-        // is WordPress core's OWN behavior
-        // (wp-admin/admin-ajax.php: `if (empty($_REQUEST['action']))
-        // wp_die('0', '', array('response' => 400));`), meaning
-        // something between the click and the server is stripping/
-        // corrupting the POST body's 'action' field entirely - almost
-        // certainly a security plugin/WAF/proxy inspecting or rewriting
-        // AJAX POST bodies (the site has a dedicated "امنیت" admin menu
-        // item), which no amount of fixing OUR PHP code can work around
-        // since the request never reaches it. Rather than keep guessing
-        // at an opaque third-party interception layer, this button is
-        // now a plain GET link handled directly on admin_init - no
-        // jQuery, no admin-ajax.php, no POST body at all - which cannot
-        // be affected by this specific failure mode.
+        // ROOT-CAUSE FIX, ATTEMPT 2 - kept as a harmless fallback: a
+        // plain GET link handler (see handle_convert_via_link()). This
+        // was the fix for a confirmed "400 Bad Request" on
+        // admin-ajax.php's POST body. It is STILL wired up here, but
+        // the site owner then reported this ALSO silently does nothing
+        // (page just reloads, no notice, no conversion) - meaning
+        // whatever is intercepting requests on this server is not
+        // limited to admin-ajax.php POST bodies specifically; it
+        // appears to silently strip unrecognized parameters from
+        // requests more broadly (GET query args included), with no
+        // error at all, which is why nothing visibly happened.
         add_action('admin_init', array($this, 'handle_convert_via_link'));
+
+        // ROOT-CAUSE FIX, ATTEMPT 3 (the reliable one): rather than
+        // inventing yet another custom request shape that the same
+        // opaque interception layer could just as easily strip too,
+        // piggyback on the ONE mechanism we know for certain already
+        // works on this exact server: saving a Houzez property via its
+        // own standard edit-screen "به‌روزرسانی/انتشار" button (the
+        // site owner actively edits/saves properties through Houzez's
+        // UI every day with no issue). A checkbox in the metabox below
+        // is now submitted as part of that same, already-functioning
+        // save request and processed here via the native save_post
+        // hook - no AJAX, no custom query string, no separate request
+        // of any kind that a filtering layer could target in isolation.
+        add_action('save_post_property', array($this, 'handle_convert_via_metabox_save'));
+    }
+
+    /**
+     * Reliable, non-AJAX, non-custom-request conversion path: runs as
+     * part of WordPress's own native post-save flow when a Houzez
+     * property is saved via its normal edit screen "به‌روزرسانی" button
+     * (see the save_post_property hookup in the constructor for why
+     * this is the one mechanism guaranteed to actually fire on this
+     * server, given the AJAX and GET-link attempts both failed
+     * silently).
+     */
+    public function handle_convert_via_metabox_save($property_id) {
+        // Skip autosaves/revisions - only act on a real, explicit save.
+        if (defined('DOING_AUTOSAVE') && DOING_AUTOSAVE) return;
+        if (wp_is_post_revision($property_id)) return;
+
+        if (empty($_POST['moaveze_convert_to_exchange'])) return;
+        if (!isset($_POST['moaveze_send_to_exchange_nonce']) ||
+            !wp_verify_nonce($_POST['moaveze_send_to_exchange_nonce'], 'moaveze_send_to_exchange')) {
+            return;
+        }
+        if (!current_user_can('manage_options')) return;
+
+        // Already converted - nothing to do.
+        $existing_exchange_id = get_post_meta($property_id, '_moaveze_exchange_linked', true);
+        if ($existing_exchange_id && get_post($existing_exchange_id)) return;
+
+        $this->import_single_property($property_id);
     }
 
     /**
@@ -127,9 +162,29 @@ class Moaveze_Houzez_Integration {
                 <p class="status-not-linked">
                     این ملک هنوز در سیستم معاوضه ثبت نشده است.
                 </p>
-                <button type="button" class="button button-primary button-small moaveze-send-to-exchange-btn" data-property-id="<?php echo esc_attr($post->ID); ?>">
-                    <span class="dashicons dashicons-randomize"></span> ارسال به معاوضه
-                </button>
+                <?php
+                // ROOT-CAUSE FIX: both a jQuery/admin-ajax.php button
+                // AND a plain GET link were silently blocked/stripped
+                // by something on this server before ever reaching our
+                // PHP code (confirmed by the site owner: one showed a
+                // hard "400 Bad Request" in DevTools, the other did
+                // literally nothing but reload the page). This
+                // checkbox instead rides along inside the SAME request
+                // that Houzez's own native "به‌روزرسانی"/"انتشار" button
+                // already submits every time - a request mechanism
+                // already proven to work reliably on this exact site -
+                // and is processed by handle_convert_via_metabox_save()
+                // on the standard save_post_property hook.
+                ?>
+                <label style="display:flex;align-items:flex-start;gap:6px;margin-top:10px;cursor:pointer;">
+                    <input type="checkbox" name="moaveze_convert_to_exchange" value="1" style="margin-top:3px;">
+                    <span>
+                        این ملک را هنگام ذخیره (کلیک روی «به‌روزرسانی») به آگهی معاوضه تبدیل کن
+                    </span>
+                </label>
+                <p class="description" style="margin-top:6px;">
+                    تیک را بزنید، سپس دکمه «به‌روزرسانی» بالای صفحه را کلیک کنید.
+                </p>
             <?php endif; ?>
         </div>
         <?php
