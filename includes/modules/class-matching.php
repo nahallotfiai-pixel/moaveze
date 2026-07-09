@@ -26,6 +26,7 @@ class Moaveze_Matching {
     public function __construct() {
         add_action('wp_ajax_moaveze_run_matching', array($this, 'run_matching'));
         add_action('wp_ajax_moaveze_list_matches', array($this, 'ajax_list_matches'));
+        add_action('wp_ajax_moaveze_list_chains', array($this, 'ajax_list_chains'));
         add_action('wp_ajax_moaveze_detect_chains', array($this, 'detect_chains'));
         add_action('save_post_moaveze_exchange', array($this, 'auto_match_on_save'), 20, 2);
         add_action('wp_ajax_moaveze_get_match_explanation', array($this, 'get_match_explanation'));
@@ -213,6 +214,59 @@ class Moaveze_Matching {
         }
 
         wp_send_json_success(array('matches' => $result, 'total' => count($result)));
+    }
+
+    /**
+     * AJAX: List chain swaps from DB
+     */
+    public function ajax_list_chains() {
+        check_ajax_referer('moaveze_admin_nonce', 'nonce');
+
+        if (!current_user_can('manage_options') && !current_user_can('moaveze_view_matches')) {
+            wp_send_json_error('دسترسی ندارید');
+        }
+
+        global $wpdb;
+        $chains_table = $wpdb->prefix . 'moaveze_chains';
+        $exchanges_table = $wpdb->prefix . 'moaveze_exchanges';
+
+        $chains = $wpdb->get_results("SELECT * FROM $chains_table ORDER BY created_at DESC LIMIT 50");
+
+        $result = array();
+        foreach ($chains as $chain) {
+            $exchange_ids = json_decode($chain->exchange_ids, true) ?: array();
+            $nodes = array();
+            foreach ($exchange_ids as $eid) {
+                $ex = $wpdb->get_row($wpdb->prepare(
+                    "SELECT post_id, property_type, district, property_value, area_sqm FROM $exchanges_table WHERE id = %d", $eid
+                ));
+                if ($ex) {
+                    $nodes[] = array(
+                        'exchange_id' => (int) $eid,
+                        'post_id'     => (int) $ex->post_id,
+                        'title'       => get_the_title($ex->post_id),
+                        'type'        => $ex->property_type,
+                        'district'    => $ex->district,
+                        'value'       => (int) $ex->property_value,
+                        'area'        => (int) $ex->area_sqm,
+                        'url'         => get_permalink($ex->post_id),
+                    );
+                }
+            }
+
+            $result[] = array(
+                'id'             => (int) $chain->id,
+                'chain_length'   => (int) $chain->chain_length,
+                'total_value'    => (int) $chain->total_value,
+                'status'         => $chain->status,
+                'nodes'          => $nodes,
+                'has_suggestion' => !empty($chain->ai_suggestion),
+                'suggestion_status' => $chain->ai_suggestion_status ?? '',
+                'created_at'     => $chain->created_at,
+            );
+        }
+
+        wp_send_json_success(array('chains' => $result, 'total' => count($result)));
     }
 
     /**

@@ -230,6 +230,7 @@ input,select,textarea{font-family:inherit;outline:none;}
 <div class="nav-item" data-page="listings" onclick="navigateTo('listings')"><span class="icon">📋</span>آگهی‌ها</div>
 <div class="nav-item" data-page="offers" onclick="navigateTo('offers')"><span class="icon">💰</span>پیشنهادات<span class="badge" id="offersCount" style="display:none"></span></div>
 <div class="nav-item" data-page="matches" onclick="navigateTo('matches')"><span class="icon">🎯</span>تطبیق‌ها</div>
+<div class="nav-item" data-page="chains" onclick="navigateTo('chains')"><span class="icon">🔗</span>زنجیره‌ای</div>
 <div class="nav-item" data-page="valuation" onclick="navigateTo('valuation')"><span class="icon">📊</span>ارزش‌گذاری</div>
 <div class="nav-item" data-page="houzez" onclick="navigateTo('houzez')"><span class="icon">🏗️</span>آگهی‌های فروش</div>
 <div class="nav-item" data-page="consultants" onclick="navigateTo('consultants')"><span class="icon">👥</span>مشاوران</div>
@@ -305,6 +306,13 @@ input,select,textarea{font-family:inherit;outline:none;}
 </select>
 </div>
 <div id="matchesContent"><div class="skeleton skeleton-card" style="margin-bottom:16px;"></div><div class="skeleton skeleton-card"></div></div>
+</div>
+
+<!-- CHAINS PAGE -->
+<div class="page" id="page-chains">
+<div class="top-bar"><h1>معاوضه‌های زنجیره‌ای</h1><div class="top-bar-actions"><button class="btn btn-primary btn-sm" onclick="detectChains()">🔗 شناسایی زنجیره‌های جدید</button></div></div>
+<p style="color:#64748b;font-size:13px;margin-bottom:20px;">معاوضه زنجیره‌ای زمانی رخ می‌دهد که چند ملک به‌صورت حلقه‌ای قابل معاوضه باشند. مثلاً: A → B → C → A</p>
+<div id="chainsContent"><div class="skeleton skeleton-card" style="margin-bottom:16px;"></div></div>
 </div>
 
 <!-- VALUATION PAGE -->
@@ -555,6 +563,7 @@ function navigateTo(page) {
         case 'listings': loadListings(); break;
         case 'offers': loadOffers(); break;
         case 'matches': loadMatches(); break;
+        case 'chains': loadChains(); break;
         case 'valuation': loadValuationFilters(); break;
         case 'houzez': loadHouzezProperties(); break;
         case 'consultants': loadConsultants(); break;
@@ -1128,6 +1137,162 @@ async function connectParties(matchId) {
             showToast(data.data || 'خطا', 'error');
         }
     } catch(e) { showToast('خطا در دریافت اطلاعات', 'error'); }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// CHAIN SWAPS
+// ═══════════════════════════════════════════════════════════════
+async function loadChains() {
+    const container = document.getElementById('chainsContent');
+    container.innerHTML = '<div style="padding:24px;text-align:center;"><div class="skeleton" style="height:100px;margin-bottom:12px;"></div></div>';
+    try {
+        const formData = new FormData();
+        formData.append('action', 'moaveze_list_chains');
+        formData.append('nonce', CONFIG.adminNonce);
+        const resp = await fetch(CONFIG.adminUrl + 'admin-ajax.php', { method: 'POST', body: formData, credentials: 'same-origin' });
+        const data = await resp.json();
+        if (data.success && data.data && data.data.chains && data.data.chains.length > 0) {
+            const chains = data.data.chains;
+            container.innerHTML = chains.map(chain => {
+                const statusLabels = { detected: 'شناسایی‌شده', in_progress: 'در حال پیگیری', completed: 'تکمیل‌شده' };
+                const statusClasses = { detected: 'status-pending', in_progress: 'status-negotiating', completed: 'status-published' };
+                const nodesHtml = chain.nodes.map((node, i) => {
+                    const arrow = i < chain.nodes.length - 1 ? ' <span style="color:#6366f1;font-size:18px;margin:0 4px;">→</span> ' : '';
+                    return `<div style="display:inline-flex;align-items:center;gap:4px;background:#f8fafc;padding:8px 12px;border-radius:8px;border:1px solid #e2e8f0;">
+                        <div>
+                            <strong style="font-size:12px;display:block;">${node.title || 'ملک ' + (i+1)}</strong>
+                            <span style="font-size:11px;color:#64748b;">${node.district || ''} • ${shortPrice(node.value)}</span>
+                            ${node.url ? '<br><a href="' + node.url + '" target="_blank" style="font-size:10px;color:#6366f1;">مشاهده آگهی</a>' : ''}
+                        </div>
+                    </div>${arrow}`;
+                }).join('');
+                const loopArrow = ' <span style="color:#10b981;font-size:18px;font-weight:bold;">↺</span>';
+                return `<div class="match-card" style="border-color:#a78bfa;">
+                    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px;">
+                        <div style="display:flex;align-items:center;gap:12px;">
+                            <span style="background:#f5f3ff;color:#7c3aed;padding:6px 14px;border-radius:20px;font-size:13px;font-weight:700;">🔗 ${toPersianDigits(chain.chain_length)} ملک</span>
+                            <span style="font-size:13px;color:#475569;">ارزش کل: ${shortPrice(chain.total_value)}</span>
+                        </div>
+                        <span class="status-badge ${statusClasses[chain.status] || 'status-draft'}">${statusLabels[chain.status] || chain.status}</span>
+                    </div>
+                    <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:16px;">
+                        ${nodesHtml}${loopArrow}
+                    </div>
+                    <div style="display:flex;flex-wrap:wrap;gap:8px;padding-top:12px;border-top:1px solid #f1f5f9;">
+                        <button class="btn btn-primary btn-xs" onclick="getChainAISuggestion(${chain.id})">🤖 پیشنهاد AI برای تسویه</button>
+                        <button class="btn btn-secondary btn-xs" onclick="changeChainStatus(${chain.id}, 'in_progress')">📋 پیگیری</button>
+                        <button class="btn btn-success btn-xs" onclick="changeChainStatus(${chain.id}, 'completed')">✓ تکمیل</button>
+                    </div>
+                    <div id="chain-ai-panel-${chain.id}" style="display:none;margin-top:12px;"></div>
+                </div>`;
+            }).join('');
+        } else {
+            container.innerHTML = '<div class="empty-state"><div class="empty-icon">🔗</div><h3>زنجیره‌ای یافت نشد</h3><p>دکمه «شناسایی زنجیره‌های جدید» را بزنید.</p></div>';
+        }
+    } catch(e) {
+        container.innerHTML = '<div class="empty-state"><div class="empty-icon">🔗</div><h3>خطا</h3><p>' + (e.message || '') + '</p></div>';
+    }
+}
+
+async function detectChains() {
+    showToast('در حال شناسایی زنجیره‌ها...', 'warning');
+    try {
+        const formData = new FormData();
+        formData.append('action', 'moaveze_detect_chains');
+        formData.append('nonce', CONFIG.adminNonce);
+        const resp = await fetch(CONFIG.adminUrl + 'admin-ajax.php', { method: 'POST', body: formData, credentials: 'same-origin' });
+        const data = await resp.json();
+        if (data.success) {
+            showToast(data.data?.message || 'زنجیره‌ها شناسایی شدند');
+            loadChains();
+        } else {
+            showToast(data.data || 'خطا', 'error');
+        }
+    } catch(e) { showToast('خطا در ارتباط', 'error'); }
+}
+
+async function getChainAISuggestion(chainId) {
+    const panel = document.getElementById('chain-ai-panel-' + chainId);
+    if (!panel) return;
+    panel.style.display = 'block';
+    panel.innerHTML = '<div class="skeleton" style="height:60px;"></div>';
+    try {
+        const formData = new FormData();
+        formData.append('action', 'moaveze_get_ai_suggestion');
+        formData.append('nonce', CONFIG.adminNonce);
+        formData.append('type', 'chain');
+        formData.append('id', chainId);
+        const resp = await fetch(CONFIG.adminUrl + 'admin-ajax.php', { method: 'POST', body: formData, credentials: 'same-origin' });
+        const data = await resp.json();
+        if (data.success && data.data) {
+            const s = data.data;
+            panel.innerHTML = `<div style="background:linear-gradient(135deg,#f5f3ff,#eef2ff);border:1px solid #e0e7ff;border-radius:12px;padding:16px;">
+                <strong style="color:#6d28d9;">💡 پیشنهاد تسویه زنجیره‌ای</strong>
+                <p style="font-size:13px;color:#374151;margin-top:8px;">${s.summary || s.suggestion || ''}</p>
+                ${s.structures ? '<div style="margin-top:8px;">' + s.structures.map(st => '<div style="background:#fff;padding:8px;border-radius:8px;margin-top:6px;border:1px solid #e2e8f0;font-size:12px;"><strong>' + (st.title||'') + '</strong><br>' + (st.description||'') + '</div>').join('') + '</div>' : ''}
+                ${s.status !== 'approved' ? '<button class="btn btn-success btn-xs" style="margin-top:10px;" onclick="approveChainSuggestion('+chainId+')">✓ تأیید</button>' : '<span style="color:#10b981;font-size:12px;margin-top:8px;display:block;">✓ تأیید شده</span>'}
+            </div>`;
+        } else {
+            panel.innerHTML = `<div style="background:#fffbeb;padding:12px;border-radius:8px;font-size:13px;color:#92400e;">
+                <p>هنوز پیشنهادی ثبت نشده.</p>
+                <button class="btn btn-primary btn-sm" style="margin-top:8px;" onclick="generateChainSuggestion(${chainId})">🤖 تولید پیشنهاد</button>
+            </div>`;
+        }
+    } catch(e) { panel.innerHTML = '<p style="color:#ef4444;font-size:13px;">خطا</p>'; }
+}
+
+async function generateChainSuggestion(chainId) {
+    const panel = document.getElementById('chain-ai-panel-' + chainId);
+    if (panel) panel.innerHTML = '<div class="skeleton" style="height:60px;"></div>';
+    showToast('در حال تولید پیشنهاد...', 'warning');
+    try {
+        const formData = new FormData();
+        formData.append('action', 'moaveze_suggest_chain_deal');
+        formData.append('nonce', CONFIG.adminNonce);
+        formData.append('chain_id', chainId);
+        const resp = await fetch(CONFIG.adminUrl + 'admin-ajax.php', { method: 'POST', body: formData, credentials: 'same-origin' });
+        const data = await resp.json();
+        if (data.success) {
+            showToast('پیشنهاد تولید شد');
+            getChainAISuggestion(chainId);
+        } else {
+            showToast(data.data || 'خطا', 'error');
+            if (panel) panel.innerHTML = '<p style="color:#ef4444;font-size:13px;">' + (data.data || 'خطا') + '</p>';
+        }
+    } catch(e) { showToast('خطا', 'error'); }
+}
+
+async function approveChainSuggestion(chainId) {
+    try {
+        const formData = new FormData();
+        formData.append('action', 'moaveze_approve_ai_suggestion');
+        formData.append('nonce', CONFIG.adminNonce);
+        formData.append('type', 'chain');
+        formData.append('id', chainId);
+        const resp = await fetch(CONFIG.adminUrl + 'admin-ajax.php', { method: 'POST', body: formData, credentials: 'same-origin' });
+        const data = await resp.json();
+        if (data.success) {
+            showToast('پیشنهاد تأیید شد');
+            getChainAISuggestion(chainId);
+        } else { showToast(data.data || 'خطا', 'error'); }
+    } catch(e) { showToast('خطا', 'error'); }
+}
+
+async function changeChainStatus(chainId, newStatus) {
+    try {
+        const formData = new FormData();
+        formData.append('action', 'moaveze_update_match_status');
+        formData.append('nonce', CONFIG.adminNonce);
+        formData.append('match_id', chainId);
+        formData.append('status', newStatus);
+        formData.append('table', 'chains');
+        const resp = await fetch(CONFIG.adminUrl + 'admin-ajax.php', { method: 'POST', body: formData, credentials: 'same-origin' });
+        const data = await resp.json();
+        if (data.success) {
+            showToast('وضعیت بروزرسانی شد');
+            loadChains();
+        } else { showToast(data.data || 'خطا', 'error'); }
+    } catch(e) { showToast('خطا', 'error'); }
 }
 
 // ═══════════════════════════════════════════════════════════════
