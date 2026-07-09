@@ -289,6 +289,15 @@ input,select,textarea{font-family:inherit;outline:none;}
 <!-- MATCHES PAGE -->
 <div class="page" id="page-matches">
 <div class="top-bar"><h1>تطبیق‌های هوشمند</h1><div class="top-bar-actions"><button class="btn btn-primary btn-sm" onclick="runMatching()">🔄 اجرای تطبیق جدید</button></div></div>
+<div class="search-bar">
+<select class="filter-select" id="matchStatusFilter" onchange="loadMatches()">
+<option value="all">همه</option>
+<option value="new">جدید</option>
+<option value="assigned">اختصاص‌یافته</option>
+<option value="in_progress">در حال بررسی</option>
+<option value="completed">تکمیل‌شده</option>
+</select>
+</div>
 <div id="matchesContent"><div class="skeleton skeleton-card" style="margin-bottom:16px;"></div><div class="skeleton skeleton-card"></div></div>
 </div>
 
@@ -651,7 +660,7 @@ async function loadListings(page) {
                 <td>${item.created_at_jalali || toPersianDigits(item.time_ago || '')}</td>
                 <td>
                     <button class="btn btn-secondary btn-xs" onclick="viewListingDetail(${item.id})">جزئیات</button>
-                    <a href="${CONFIG.adminUrl}post.php?post=${item.id}&action=edit" target="_blank" class="btn btn-secondary btn-xs">ویرایش</a>
+                    <button class="btn btn-secondary btn-xs" onclick="editExchange(${item.id})">ویرایش</button>
                     <a href="${item.url || '#'}" target="_blank" class="btn btn-secondary btn-xs">صفحه آگهی</a>
                     ${item.post_status === 'pending' && CONFIG.isAdmin ? '<button class="btn btn-success btn-xs" onclick="approveListing('+item.id+')">تأیید</button>' : ''}
                 </td>
@@ -771,13 +780,27 @@ async function updateOfferStatus(offerId, status) {
 // ═══════════════════════════════════════════════════════════════
 // MATCHES
 // ═══════════════════════════════════════════════════════════════
+function getMatchStatusLabel(status) {
+    const labels = { 'new': 'جدید', 'assigned': 'اختصاص‌یافته', 'in_progress': 'در حال بررسی', 'completed': 'تکمیل‌شده' };
+    return labels[status] || status || '—';
+}
+
+function getMatchStatusClass(status) {
+    const classes = { 'new': 'status-pending', 'assigned': 'status-negotiating', 'in_progress': 'status-negotiating', 'completed': 'status-published' };
+    return classes[status] || 'status-draft';
+}
+
 async function loadMatches() {
     const container = document.getElementById('matchesContent');
     container.innerHTML = '<div style="padding:24px;text-align:center;"><div class="skeleton" style="height:80px;margin-bottom:12px;"></div><div class="skeleton" style="height:80px;"></div></div>';
+    const statusFilter = document.getElementById('matchStatusFilter').value;
     try {
         const formData = new FormData();
         formData.append('action', 'moaveze_list_matches');
         formData.append('nonce', CONFIG.adminNonce);
+        if (statusFilter && statusFilter !== 'all') {
+            formData.append('status', statusFilter);
+        }
         const resp = await fetch(CONFIG.adminUrl + 'admin-ajax.php', { method: 'POST', body: formData, credentials: 'same-origin' });
         const data = await resp.json();
         if (data.success && data.data && data.data.matches && data.data.matches.length > 0) {
@@ -785,13 +808,52 @@ async function loadMatches() {
             container.innerHTML = matches.map(m => {
                 const score = parseFloat(m.score || 0);
                 const scoreClass = score >= 70 ? 'high' : (score >= 40 ? 'medium' : 'low');
-                return `<div class="match-card"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;"><span class="match-score ${scoreClass}">🎯 ${toPersianDigits(score.toFixed(0))}٪ تطابق</span><div><button class="btn btn-primary btn-xs" onclick="connectParties(${m.id})">ارتباط طرفین</button> <span class="status-badge ${getStatusClass(m.status)}">${getStatusLabel(m.status)}</span></div></div><div class="match-sides"><div class="match-side"><h4>${m.title_a || 'ملک A'}</h4><p>${m.district_a || ''} • ${m.type_a || ''} • ${shortPrice(m.value_a)}</p><p style="font-size:11px;color:#94a3b8;">${toPersianDigits(m.area_a || 0)} م²</p></div><div class="arrow">⇄</div><div class="match-side"><h4>${m.title_b || 'ملک B'}</h4><p>${m.district_b || ''} • ${m.type_b || ''} • ${shortPrice(m.value_b)}</p><p style="font-size:11px;color:#94a3b8;">${toPersianDigits(m.area_b || 0)} م²</p></div></div>${m.suggestion ? '<p style="margin-top:12px;font-size:12px;color:#6366f1;background:#eef2ff;padding:8px 12px;border-radius:8px;">💡 ' + m.suggestion + '</p>' : ''}</div>`;
+                const details = m.match_details || {};
+                const reasons = details.reasons || [];
+                const reasonsHtml = reasons.length > 0
+                    ? '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:12px;">' + reasons.map(r => '<span style="display:inline-block;padding:3px 10px;background:#eef2ff;color:#4f46e5;border-radius:20px;font-size:11px;font-weight:500;">✓ ' + r + '</span>').join('') + '</div>'
+                    : '';
+                return `<div class="match-card">
+                    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+                        <span class="match-score ${scoreClass}">🎯 ${toPersianDigits(score.toFixed(0))}٪ تطابق</span>
+                        <span class="status-badge ${getMatchStatusClass(m.status)}">${getMatchStatusLabel(m.status)}</span>
+                    </div>
+                    <div class="match-sides">
+                        <div class="match-side">
+                            <h4>${m.title_a || 'ملک A'}</h4>
+                            <p>${m.district_a || '—'} • ${m.type_a || '—'}</p>
+                            <p style="font-size:12px;color:#475569;margin-top:4px;">ارزش: ${shortPrice(m.value_a)}</p>
+                            <p style="font-size:11px;color:#94a3b8;">${toPersianDigits(m.area_a || 0)} م²</p>
+                        </div>
+                        <div class="arrow">⇄</div>
+                        <div class="match-side">
+                            <h4>${m.title_b || 'ملک B'}</h4>
+                            <p>${m.district_b || '—'} • ${m.type_b || '—'}</p>
+                            <p style="font-size:12px;color:#475569;margin-top:4px;">ارزش: ${shortPrice(m.value_b)}</p>
+                            <p style="font-size:11px;color:#94a3b8;">${toPersianDigits(m.area_b || 0)} م²</p>
+                        </div>
+                    </div>
+                    ${reasonsHtml}
+                    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:16px;padding-top:12px;border-top:1px solid #f1f5f9;">
+                        <button class="btn btn-secondary btn-xs" onclick="assignConsultant(${m.id})">👤 اختصاص مشاور</button>
+                        <button class="btn btn-primary btn-xs" onclick="connectParties(${m.id})">📞 ارتباط طرفین</button>
+                        <button class="btn btn-secondary btn-xs" onclick="getAISuggestion(${m.id})">🤖 پیشنهاد هوش مصنوعی</button>
+                        <select class="filter-select" style="padding:4px 10px;font-size:12px;min-width:auto;border-radius:6px;" onchange="changeMatchStatus(${m.id}, this.value)">
+                            <option value="" disabled selected>تغییر وضعیت</option>
+                            <option value="new">جدید</option>
+                            <option value="assigned">اختصاص‌یافته</option>
+                            <option value="in_progress">در حال بررسی</option>
+                            <option value="completed">تکمیل‌شده</option>
+                        </select>
+                    </div>
+                    <div id="ai-suggestion-panel-${m.id}" style="display:none;margin-top:12px;"></div>
+                </div>`;
             }).join('');
         } else {
             container.innerHTML = '<div class="empty-state"><div class="empty-icon">🎯</div><h3>تطبیقی یافت نشد</h3><p>دکمه «اجرای تطبیق جدید» را بزنید تا الگوریتم تطبیق اجرا شود.</p></div>';
         }
     } catch(e) {
-        container.innerHTML = '<div class="empty-state"><div class="empty-icon">🎯</div><h3>خطا در بارگذاری</h3><p>' + e.message + '</p></div>';
+        container.innerHTML = '<div class="empty-state"><div class="empty-icon">🎯</div><h3>خطا در بارگذاری</h3><p>' + (e.message || 'خطا') + '</p></div>';
     }
 }
 
@@ -808,6 +870,193 @@ async function runMatching() {
             loadMatches();
         } else {
             showToast(data.data || 'خطا در اجرای تطبیق', 'error');
+        }
+    } catch(e) { showToast('خطا در ارتباط', 'error'); }
+}
+
+async function assignConsultant(matchId) {
+    const content = `
+        <div class="form-group">
+            <label>جستجوی مشاور</label>
+            <input type="text" class="form-control" id="consultantAssignSearch" placeholder="نام یا ایمیل مشاور..." oninput="debounce(searchConsultantsForAssign,300)()">
+        </div>
+        <div id="consultantAssignResults" style="max-height:300px;overflow-y:auto;"></div>
+    `;
+    showModal('اختصاص مشاور به تطبیق', content);
+    window._currentAssignMatchId = matchId;
+    searchConsultantsForAssign();
+}
+
+async function searchConsultantsForAssign() {
+    const query = document.getElementById('consultantAssignSearch')?.value || '';
+    const container = document.getElementById('consultantAssignResults');
+    if (!container) return;
+    container.innerHTML = '<div class="skeleton skeleton-text"></div>';
+    try {
+        const formData = new FormData();
+        formData.append('action', 'moaveze_get_consultants');
+        formData.append('nonce', CONFIG.adminNonce);
+        if (query) formData.append('search', query);
+        const resp = await fetch(CONFIG.adminUrl + 'admin-ajax.php', { method: 'POST', body: formData, credentials: 'same-origin' });
+        const data = await resp.json();
+        if (data.success && data.data && data.data.length > 0) {
+            container.innerHTML = data.data.map(c => `
+                <div style="display:flex;align-items:center;justify-content:space-between;padding:10px;background:#f8fafc;border-radius:8px;margin-bottom:8px;">
+                    <div style="display:flex;align-items:center;gap:10px;">
+                        <img src="${c.avatar || ''}" style="width:32px;height:32px;border-radius:50%;background:#e2e8f0;">
+                        <span style="font-size:13px;"><strong>${c.display_name || c.name || ''}</strong></span>
+                    </div>
+                    <button class="btn btn-success btn-xs" onclick="doAssignConsultant(${window._currentAssignMatchId}, ${c.id})">انتخاب</button>
+                </div>
+            `).join('');
+        } else {
+            container.innerHTML = '<p style="font-size:13px;color:#64748b;padding:8px;">مشاوری یافت نشد</p>';
+        }
+    } catch(e) {
+        container.innerHTML = '<p style="color:#ef4444;font-size:13px;">خطا در جستجو</p>';
+    }
+}
+
+async function doAssignConsultant(matchId, consultantId) {
+    try {
+        const formData = new FormData();
+        formData.append('action', 'moaveze_assign_consultant');
+        formData.append('nonce', CONFIG.adminNonce);
+        formData.append('match_id', matchId);
+        formData.append('consultant_id', consultantId);
+        const resp = await fetch(CONFIG.adminUrl + 'admin-ajax.php', { method: 'POST', body: formData, credentials: 'same-origin' });
+        const data = await resp.json();
+        if (data.success) {
+            showToast('مشاور با موفقیت اختصاص یافت');
+            closeModal();
+            loadMatches();
+        } else {
+            showToast(data.data || 'خطا در اختصاص مشاور', 'error');
+        }
+    } catch(e) { showToast('خطا در ارتباط با سرور', 'error'); }
+}
+
+async function getAISuggestion(matchId) {
+    const panel = document.getElementById('ai-suggestion-panel-' + matchId);
+    if (!panel) return;
+    panel.style.display = 'block';
+    panel.innerHTML = '<div class="skeleton" style="height:60px;"></div>';
+    try {
+        const formData = new FormData();
+        formData.append('action', 'moaveze_get_ai_suggestion');
+        formData.append('nonce', CONFIG.adminNonce);
+        formData.append('type', 'match');
+        formData.append('id', matchId);
+        const resp = await fetch(CONFIG.adminUrl + 'admin-ajax.php', { method: 'POST', body: formData, credentials: 'same-origin' });
+        const data = await resp.json();
+        if (data.success) {
+            renderAISuggestionPanel(panel, data.data, matchId);
+        } else {
+            // No existing suggestion, offer to generate one
+            panel.innerHTML = `
+                <div style="background:#fffbeb;padding:12px;border-radius:8px;font-size:13px;color:#92400e;">
+                    <p>هنوز پیشنهادی برای این تطبیق ثبت نشده است.</p>
+                    <button class="btn btn-primary btn-sm" style="margin-top:8px;" onclick="generateAISuggestion(${matchId})">🤖 تولید پیشنهاد جدید</button>
+                </div>`;
+        }
+    } catch(e) {
+        panel.innerHTML = '<p style="color:#ef4444;font-size:13px;padding:8px;">خطا در دریافت پیشنهاد</p>';
+    }
+}
+
+async function generateAISuggestion(matchId) {
+    const panel = document.getElementById('ai-suggestion-panel-' + matchId);
+    if (!panel) return;
+    panel.innerHTML = '<div class="skeleton" style="height:60px;"></div>';
+    showToast('در حال تولید پیشنهاد هوش مصنوعی...', 'warning');
+    try {
+        const formData = new FormData();
+        formData.append('action', 'moaveze_suggest_match_deal');
+        formData.append('nonce', CONFIG.adminNonce);
+        formData.append('match_id', matchId);
+        const resp = await fetch(CONFIG.adminUrl + 'admin-ajax.php', { method: 'POST', body: formData, credentials: 'same-origin' });
+        const data = await resp.json();
+        if (data.success) {
+            showToast('پیشنهاد هوش مصنوعی تولید شد');
+            renderAISuggestionPanel(panel, data.data, matchId);
+        } else {
+            panel.innerHTML = '<p style="color:#ef4444;font-size:13px;padding:8px;">' + (data.data || 'خطا در تولید پیشنهاد') + '</p>';
+        }
+    } catch(e) {
+        panel.innerHTML = '<p style="color:#ef4444;font-size:13px;padding:8px;">خطا در ارتباط با سرور</p>';
+    }
+}
+
+function renderAISuggestionPanel(panel, suggestion, matchId) {
+    const confColors = { 'بالا': '#10b981', 'متوسط': '#f59e0b', 'پایین': '#ef4444' };
+    const confColor = confColors[suggestion.confidence] || '#64748b';
+    const statusLabel = suggestion.status === 'approved' ? '<span style="color:#10b981;font-weight:600;">✓ تأیید شده</span>' : '<span style="color:#f59e0b;">در انتظار تأیید</span>';
+    let html = `<div style="background:linear-gradient(135deg,#eef2ff,#faf5ff);border:1px solid #e0e7ff;border-radius:12px;padding:16px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+            <strong style="font-size:14px;color:#4f46e5;">💡 پیشنهاد هوش مصنوعی</strong>
+            <div style="display:flex;align-items:center;gap:8px;">
+                ${statusLabel}
+                <span style="font-size:11px;color:#64748b;">${suggestion.provider || ''}</span>
+            </div>
+        </div>
+        <p style="font-size:13px;color:#374151;margin-bottom:12px;">${suggestion.summary || ''}</p>`;
+    if (suggestion.structures && suggestion.structures.length > 0) {
+        html += '<div style="margin-bottom:12px;">';
+        suggestion.structures.forEach(s => {
+            html += `<div style="background:#fff;border-radius:8px;padding:10px;margin-bottom:8px;border:1px solid #e2e8f0;">
+                <strong style="font-size:12px;color:#1e1b4b;">${s.title || ''}</strong>
+                <p style="font-size:12px;color:#475569;margin-top:4px;">${s.description || ''}</p>
+                ${s.cash_short ? '<p style="font-size:12px;color:#059669;margin-top:4px;">💰 ' + s.cash_short + (s.cash_direction === 'a_to_b' ? ' (طرف الف به ب)' : s.cash_direction === 'b_to_a' ? ' (طرف ب به الف)' : '') + '</p>' : ''}
+            </div>`;
+        });
+        html += '</div>';
+    }
+    if (suggestion.risks && suggestion.risks.length > 0) {
+        html += '<div style="margin-bottom:12px;"><strong style="font-size:12px;color:#dc2626;">⚠ نکات و ریسک‌ها:</strong><ul style="margin-top:4px;padding-right:16px;">';
+        suggestion.risks.forEach(r => { html += '<li style="font-size:12px;color:#64748b;margin-bottom:2px;">' + r + '</li>'; });
+        html += '</ul></div>';
+    }
+    html += `<div style="display:flex;align-items:center;gap:8px;">
+        <span style="font-size:11px;color:${confColor};">اطمینان: ${suggestion.confidence || '—'}</span>
+        ${suggestion.status !== 'approved' ? '<button class="btn btn-success btn-xs" onclick="approveAISuggestion('+matchId+')">✓ تأیید پیشنهاد</button>' : ''}
+        <button class="btn btn-secondary btn-xs" onclick="generateAISuggestion('+matchId+')">🔄 تولید مجدد</button>
+    </div></div>`;
+    panel.innerHTML = html;
+}
+
+async function approveAISuggestion(matchId) {
+    try {
+        const formData = new FormData();
+        formData.append('action', 'moaveze_approve_ai_suggestion');
+        formData.append('nonce', CONFIG.adminNonce);
+        formData.append('type', 'match');
+        formData.append('id', matchId);
+        const resp = await fetch(CONFIG.adminUrl + 'admin-ajax.php', { method: 'POST', body: formData, credentials: 'same-origin' });
+        const data = await resp.json();
+        if (data.success) {
+            showToast('پیشنهاد هوش مصنوعی تأیید شد');
+            getAISuggestion(matchId);
+        } else {
+            showToast(data.data || 'خطا در تأیید', 'error');
+        }
+    } catch(e) { showToast('خطا در ارتباط', 'error'); }
+}
+
+async function changeMatchStatus(matchId, newStatus) {
+    if (!newStatus) return;
+    try {
+        const formData = new FormData();
+        formData.append('action', 'moaveze_update_match_status');
+        formData.append('nonce', CONFIG.adminNonce);
+        formData.append('match_id', matchId);
+        formData.append('status', newStatus);
+        const resp = await fetch(CONFIG.adminUrl + 'admin-ajax.php', { method: 'POST', body: formData, credentials: 'same-origin' });
+        const data = await resp.json();
+        if (data.success) {
+            showToast('وضعیت تطبیق بروزرسانی شد');
+            loadMatches();
+        } else {
+            showToast(data.data || 'خطا در تغییر وضعیت', 'error');
         }
     } catch(e) { showToast('خطا در ارتباط', 'error'); }
 }
@@ -846,6 +1095,130 @@ async function connectParties(matchId) {
             showToast(data.data || 'خطا', 'error');
         }
     } catch(e) { showToast('خطا در دریافت اطلاعات', 'error'); }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// INLINE EXCHANGE EDITOR
+// ═══════════════════════════════════════════════════════════════
+async function editExchange(postId) {
+    showModal('در حال بارگذاری...', '<div class="skeleton" style="height:200px;"></div>');
+    try {
+        const resp = await apiCall('exchanges/' + postId);
+        const item = resp.data?.item || resp.item || resp.data || resp;
+        const exchangeTypes = [
+            {value: 'similar', label: 'مشابه'},
+            {value: 'any', label: 'هر نوع'},
+            {value: 'specific', label: 'خاص'}
+        ];
+        const exchangeTypeOptions = exchangeTypes.map(t =>
+            '<option value="' + t.value + '"' + (item.exchange_type === t.value ? ' selected' : '') + '>' + t.label + '</option>'
+        ).join('');
+        const cashDirections = [
+            {value: 'give', label: 'می‌دهم'},
+            {value: 'receive', label: 'می‌گیرم'}
+        ];
+        const cashDirOptions = cashDirections.map(d =>
+            '<option value="' + d.value + '"' + (item.cash_direction === d.value ? ' selected' : '') + '>' + d.label + '</option>'
+        ).join('');
+
+        const content = `
+            <div class="form-row">
+                <div class="form-group">
+                    <label>عنوان</label>
+                    <input type="text" class="form-control" id="editTitle" value="${(item.title || '').replace(/"/g, '&quot;')}">
+                </div>
+                <div class="form-group">
+                    <label>ارزش (تومان)</label>
+                    <input type="number" class="form-control" id="editValue" value="${item.property_value || item.value || ''}">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>متراژ (متر مربع)</label>
+                    <input type="number" class="form-control" id="editArea" value="${item.area_sqm || item.area || ''}">
+                </div>
+                <div class="form-group">
+                    <label>تعداد اتاق</label>
+                    <input type="number" class="form-control" id="editRooms" value="${item.rooms || ''}">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>طبقه</label>
+                    <input type="number" class="form-control" id="editFloor" value="${item.floor || ''}">
+                </div>
+                <div class="form-group">
+                    <label>سال ساخت</label>
+                    <input type="number" class="form-control" id="editYearBuilt" value="${item.year_built || ''}">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>نوع معاوضه</label>
+                    <select class="form-control" id="editExchangeType">
+                        <option value="">انتخاب کنید</option>
+                        ${exchangeTypeOptions}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>مابه‌التفاوت (تومان)</label>
+                    <input type="number" class="form-control" id="editCashDiff" value="${item.cash_difference || ''}">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>جهت مابه‌التفاوت</label>
+                    <select class="form-control" id="editCashDirection">
+                        <option value="">انتخاب کنید</option>
+                        ${cashDirOptions}
+                    </select>
+                </div>
+                <div class="form-group"></div>
+            </div>
+            <div class="form-group">
+                <label>توضیحات</label>
+                <textarea class="form-control" id="editDescription" rows="3">${(item.description_raw || item.description || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</textarea>
+            </div>
+            <button class="btn btn-primary" onclick="saveExchange(${postId})" style="width:100%;margin-top:8px;">ذخیره تغییرات</button>
+        `;
+        showModal('ویرایش آگهی: ' + (item.title || ''), content);
+    } catch(e) {
+        showModal('خطا', '<p style="color:#ef4444;">خطا در بارگذاری اطلاعات آگهی: ' + (e.message || 'خطا') + '</p>');
+    }
+}
+
+async function saveExchange(postId) {
+    const body = {};
+    const title = document.getElementById('editTitle')?.value;
+    const value = document.getElementById('editValue')?.value;
+    const area = document.getElementById('editArea')?.value;
+    const rooms = document.getElementById('editRooms')?.value;
+    const floor = document.getElementById('editFloor')?.value;
+    const yearBuilt = document.getElementById('editYearBuilt')?.value;
+    const exchangeType = document.getElementById('editExchangeType')?.value;
+    const cashDiff = document.getElementById('editCashDiff')?.value;
+    const cashDirection = document.getElementById('editCashDirection')?.value;
+    const description = document.getElementById('editDescription')?.value;
+
+    if (title) body.title = title;
+    if (value) body.property_value = parseInt(value);
+    if (area) body.area_sqm = parseInt(area);
+    if (rooms) body.rooms = parseInt(rooms);
+    if (floor) body.floor = parseInt(floor);
+    if (yearBuilt) body.year_built = parseInt(yearBuilt);
+    if (exchangeType) body.exchange_type = exchangeType;
+    if (cashDiff) body.cash_difference = parseInt(cashDiff);
+    if (cashDirection) body.cash_direction = cashDirection;
+    if (description !== undefined) body.description = description;
+
+    try {
+        await apiCall('exchanges/' + postId, 'PUT', body);
+        showToast('تغییرات با موفقیت ذخیره شد');
+        closeModal();
+        loadListings();
+    } catch(e) {
+        showToast('خطا در ذخیره تغییرات: ' + (e.message || 'خطا'), 'error');
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════
