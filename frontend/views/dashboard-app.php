@@ -1606,7 +1606,7 @@ async function loadHouzezProperties(page) {
                     <td>${toPersianDigits(listingId)}</td>
                     <td>${shortPrice(price)}</td>
                     <td>${hasExchange ? '<span style="color:#10b981;">✓ تبدیل شده</span>' : '<span style="color:#94a3b8;">—</span>'}</td>
-                    <td>${!hasExchange ? '<button class="btn btn-primary btn-xs" onclick="convertToExchange('+item.id+')">تبدیل به معاوضه</button>' : '<span style="color:#10b981;font-size:12px;">متصل</span>'} <button class="btn btn-secondary btn-xs" onclick="runAIValuationForProperty('+item.id+')">📊 ارزش‌گذاری</button></td>
+                    <td>${!hasExchange ? '<button class="btn btn-primary btn-xs" onclick="convertToExchange('+item.id+')">تبدیل به معاوضه</button>' : '<span style="color:#10b981;font-size:12px;">متصل</span>'} <button class="btn btn-secondary btn-xs" onclick="runAIValuationForProperty(${item.id})">📊 ارزش‌گذاری</button></td>
                 </tr>`;
             }).join('') + '</tbody></table>';
         renderPagination('houzezPagination', houzezPage, totalPages, 'loadHouzezProperties');
