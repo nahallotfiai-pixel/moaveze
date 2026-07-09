@@ -1561,17 +1561,88 @@ async function applyValuation(postId, value) {
 
 async function loadValuationHistory() {
     const container = document.getElementById('valuationHistoryTable');
+    container.innerHTML = '<div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text" style="width:60%"></div>';
     try {
-        const resp = await apiCall('exchanges/my?per_page=20');
-        const items = resp.data?.items || [];
-        if (items.length === 0) {
-            container.innerHTML = '<div class="empty-state"><div class="empty-icon">📊</div><h3>تاریخچه‌ای موجود نیست</h3></div>';
-            return;
+        const formData = new FormData();
+        formData.append('action', 'moaveze_list_valuations');
+        formData.append('nonce', CONFIG.valuationNonce);
+        const resp = await fetch(CONFIG.adminUrl + 'admin-ajax.php', { method: 'POST', body: formData, credentials: 'same-origin' });
+        const data = await resp.json();
+        if (data.success && data.data && data.data.items && data.data.items.length > 0) {
+            const items = data.data.items;
+            container.innerHTML = '<table class="data-table"><thead><tr><th>آگهی</th><th>نوع</th><th>ارزش پیشنهادی</th><th>ارائه‌دهنده</th><th>وضعیت</th><th>تاریخ</th><th>عملیات</th></tr></thead><tbody>' +
+                items.map(item => {
+                    const value = item.suggested_value || item.manual_value || 0;
+                    const typeLabel = item.type === 'ai' ? '🤖 هوش مصنوعی' : '👤 دستی';
+                    const statusLabels = { pending: 'در انتظار', applied: 'اعمال‌شده', draft: 'پیش‌نویس' };
+                    const statusClasses = { pending: 'status-pending', applied: 'status-published', draft: 'status-draft' };
+                    return `<tr>
+                        <td><strong>${item.post_title}</strong></td>
+                        <td>${typeLabel}</td>
+                        <td>${shortPrice(value)}</td>
+                        <td>${item.ai_provider || '—'}</td>
+                        <td><span class="status-badge ${statusClasses[item.status] || 'status-draft'}">${statusLabels[item.status] || item.status || '—'}</span></td>
+                        <td>${item.created_at_jalali || ''}</td>
+                        <td>
+                            <button class="btn btn-secondary btn-xs" onclick="viewValuationDetail(${item.id})">جزئیات</button>
+                            <button class="btn btn-danger btn-xs" onclick="deleteValuation(${item.id})">حذف</button>
+                        </td>
+                    </tr>`;
+                }).join('') + '</tbody></table>';
+        } else {
+            container.innerHTML = '<div class="empty-state"><div class="empty-icon">📊</div><h3>تاریخچه‌ای موجود نیست</h3><p>هنوز ارزش‌گذاری‌ای انجام نشده است.</p></div>';
         }
-        container.innerHTML = '<table class="data-table"><thead><tr><th>آگهی</th><th>ارزش فعلی</th><th>متراژ</th><th>تاریخ ثبت</th></tr></thead><tbody>' +
-            items.map(item => `<tr><td>${item.title}</td><td>${item.value_formatted || shortPrice(item.value)}</td><td>${toPersianDigits(item.area)} م²</td><td>${item.created_at_jalali || ''}</td></tr>`).join('') +
-            '</tbody></table>';
-    } catch(e) { container.innerHTML = '<p style="color:#ef4444;">خطا</p>'; }
+    } catch(e) {
+        container.innerHTML = '<p style="color:#ef4444;font-size:13px;">خطا در بارگذاری تاریخچه</p>';
+    }
+}
+
+async function viewValuationDetail(valuationId) {
+    try {
+        const formData = new FormData();
+        formData.append('action', 'moaveze_get_valuation_details');
+        formData.append('nonce', CONFIG.valuationNonce);
+        formData.append('valuation_id', valuationId);
+        const resp = await fetch(CONFIG.adminUrl + 'admin-ajax.php', { method: 'POST', body: formData, credentials: 'same-origin' });
+        const data = await resp.json();
+        if (data.success) {
+            const v = data.data;
+            let content = '<div style="direction:rtl;">';
+            content += '<p><strong>ارزش پیشنهادی:</strong> ' + shortPrice(v.suggested_value || v.manual_value) + '</p>';
+            if (v.min_value) content += '<p><strong>محدوده:</strong> ' + shortPrice(v.min_value) + ' تا ' + shortPrice(v.max_value) + '</p>';
+            if (v.ai_provider) content += '<p><strong>ارائه‌دهنده:</strong> ' + v.ai_provider + '</p>';
+            if (v.confidence) content += '<p><strong>اطمینان:</strong> ' + v.confidence + '</p>';
+            if (v.methodology) content += '<div style="margin-top:12px;padding:12px;background:#f8fafc;border-radius:8px;font-size:13px;"><strong>روش‌شناسی:</strong><br>' + v.methodology + '</div>';
+            if (v.comparables && v.comparables.length > 0) {
+                content += '<div style="margin-top:12px;"><strong>موارد مشابه:</strong><table class="data-table" style="margin-top:8px;"><thead><tr><th>توضیح</th><th>ارزش</th></tr></thead><tbody>';
+                v.comparables.forEach(c => { content += '<tr><td>' + (c.title || c.description || '') + '</td><td>' + shortPrice(c.value || c.total_value) + '</td></tr>'; });
+                content += '</tbody></table></div>';
+            }
+            content += '</div>';
+            showModal('جزئیات ارزش‌گذاری', content);
+        } else {
+            showToast(data.data || 'خطا', 'error');
+        }
+    } catch(e) { showToast('خطا در دریافت جزئیات', 'error'); }
+}
+
+async function deleteValuation(valuationId) {
+    if (!confirm('آیا از حذف این ارزش‌گذاری مطمئن هستید؟')) return;
+    try {
+        const formData = new FormData();
+        formData.append('action', 'moaveze_delete_valuation');
+        formData.append('nonce', CONFIG.valuationNonce);
+        formData.append('valuation_id', valuationId);
+        formData.append('force', '1');
+        const resp = await fetch(CONFIG.adminUrl + 'admin-ajax.php', { method: 'POST', body: formData, credentials: 'same-origin' });
+        const data = await resp.json();
+        if (data.success) {
+            showToast('ارزش‌گذاری حذف شد');
+            loadValuationHistory();
+        } else {
+            showToast(data.data || 'خطا در حذف', 'error');
+        }
+    } catch(e) { showToast('خطا', 'error'); }
 }
 
 // ═══════════════════════════════════════════════════════════════

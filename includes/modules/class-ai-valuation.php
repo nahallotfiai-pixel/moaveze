@@ -116,6 +116,43 @@ class Moaveze_AI_Valuation {
         add_action('wp_ajax_moaveze_save_ai_model', array($this, 'ajax_save_ai_model'));
         add_action('wp_ajax_moaveze_delete_valuation', array($this, 'ajax_delete_valuation'));
         add_action('wp_ajax_moaveze_get_valuation_details', array($this, 'ajax_get_valuation_details'));
+        add_action('wp_ajax_moaveze_list_valuations', array($this, 'ajax_list_valuations'));
+    }
+
+    /**
+     * AJAX: List all valuation history (for external dashboard)
+     */
+    public function ajax_list_valuations() {
+        check_ajax_referer('moaveze_valuation', 'nonce');
+        if (!$this->current_user_is_staff()) wp_send_json_error('دسترسی ندارید');
+
+        global $wpdb;
+        $table = $wpdb->prefix . 'moaveze_valuations';
+        $rows = $wpdb->get_results(
+            "SELECT v.*, p.post_title 
+             FROM $table v 
+             LEFT JOIN {$wpdb->posts} p ON v.post_id = p.ID 
+             ORDER BY v.created_at DESC 
+             LIMIT 50"
+        );
+
+        $items = array();
+        foreach ($rows as $row) {
+            $items[] = array(
+                'id'              => (int) $row->id,
+                'post_id'         => (int) $row->post_id,
+                'post_title'      => $row->post_title ?: 'آگهی #' . $row->post_id,
+                'type'            => $row->type, // 'ai' or 'manual'
+                'ai_provider'     => $row->ai_provider ?? '',
+                'suggested_value' => (int) ($row->suggested_value ?? 0),
+                'manual_value'    => (int) ($row->manual_value ?? 0),
+                'status'          => $row->status, // 'pending', 'applied', etc.
+                'created_at'      => $row->created_at,
+                'created_at_jalali' => class_exists('Moaveze_Helpers') ? Moaveze_Helpers::jalali_date($row->created_at, 'Y/m/d H:i') : $row->created_at,
+            );
+        }
+
+        wp_send_json_success(array('items' => $items, 'total' => count($items)));
     }
 
     /**
