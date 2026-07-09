@@ -51,6 +51,14 @@ $query_args = array(
     'paged'          => $paged,
     'orderby'        => 'date',
     'order'          => 'DESC',
+    // Only show "for sale" properties (exclude rent/رهن/اجاره)
+    'tax_query'      => array(
+        array(
+            'taxonomy' => 'property_status',
+            'field'    => 'slug',
+            'terms'    => array('for-sale', 'sell', 'sell-agreed'),
+        ),
+    ),
 );
 
 if ($search_term !== '') {

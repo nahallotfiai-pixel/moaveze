@@ -25,6 +25,7 @@ class Moaveze_Matching {
 
     public function __construct() {
         add_action('wp_ajax_moaveze_run_matching', array($this, 'run_matching'));
+        add_action('wp_ajax_moaveze_list_matches', array($this, 'ajax_list_matches'));
         add_action('wp_ajax_moaveze_detect_chains', array($this, 'detect_chains'));
         add_action('save_post_moaveze_exchange', array($this, 'auto_match_on_save'), 20, 2);
         add_action('wp_ajax_moaveze_get_match_explanation', array($this, 'get_match_explanation'));
@@ -145,6 +146,63 @@ class Moaveze_Matching {
         );
 
         wp_send_json_success(array('message' => 'وضعیت تطابق بروزرسانی شد'));
+    }
+
+    /**
+     * AJAX: List existing matches from the DB (for the frontend dashboard)
+     */
+    public function ajax_list_matches() {
+        check_ajax_referer('moaveze_admin_nonce', 'nonce');
+
+        if (!current_user_can('manage_options') && !current_user_can('moaveze_view_matches')) {
+            wp_send_json_error('دسترسی ندارید');
+        }
+
+        global $wpdb;
+        $matches_table = $wpdb->prefix . 'moaveze_matches';
+        $exchanges_table = $wpdb->prefix . 'moaveze_exchanges';
+
+        $matches = $wpdb->get_results(
+            "SELECT m.*, 
+                    a.post_id as post_id_a, a.property_type as type_a, a.district as district_a, 
+                    a.property_value as value_a, a.area_sqm as area_a,
+                    b.post_id as post_id_b, b.property_type as type_b, b.district as district_b, 
+                    b.property_value as value_b, b.area_sqm as area_b
+             FROM $matches_table m
+             LEFT JOIN $exchanges_table a ON m.exchange_id_a = a.id
+             LEFT JOIN $exchanges_table b ON m.exchange_id_b = b.id
+             ORDER BY m.match_score DESC
+             LIMIT 50"
+        );
+
+        $result = array();
+        foreach ($matches as $m) {
+            $title_a = $m->post_id_a ? get_the_title($m->post_id_a) : 'ملک A';
+            $title_b = $m->post_id_b ? get_the_title($m->post_id_b) : 'ملک B';
+            $details = json_decode($m->match_details, true) ?: array();
+
+            $result[] = array(
+                'id'          => (int) $m->id,
+                'score'       => (float) $m->match_score,
+                'status'      => $m->status,
+                'match_type'  => $m->match_type ?? '',
+                'suggestion'  => $details['suggestion'] ?? '',
+                'title_a'     => $title_a,
+                'type_a'      => $m->type_a,
+                'district_a'  => $m->district_a,
+                'value_a'     => (int) $m->value_a,
+                'area_a'      => (int) $m->area_a,
+                'title_b'     => $title_b,
+                'type_b'      => $m->type_b,
+                'district_b'  => $m->district_b,
+                'value_b'     => (int) $m->value_b,
+                'area_b'      => (int) $m->area_b,
+                'post_id_a'   => (int) $m->post_id_a,
+                'post_id_b'   => (int) $m->post_id_b,
+            );
+        }
+
+        wp_send_json_success(array('matches' => $result, 'total' => count($result)));
     }
 
     /**

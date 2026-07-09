@@ -347,6 +347,7 @@ input,select,textarea{font-family:inherit;outline:none;}
 <div class="panel" style="padding:0;overflow:hidden;">
 <div id="houzezTable"><div style="padding:24px;"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text" style="width:60%"></div></div></div>
 </div>
+<div class="pagination" id="houzezPagination"></div>
 </div>
 
 <!-- CONSULTANTS PAGE -->
@@ -414,6 +415,7 @@ const CONFIG = {
 let currentPage = 'home';
 let listingsPage = 1;
 let offersPage = 1;
+let houzezPage = 1;
 let currentOfferTab = 'received';
 let debounceTimers = {};
 
@@ -747,48 +749,28 @@ async function updateOfferStatus(offerId, status) {
 // ═══════════════════════════════════════════════════════════════
 async function loadMatches() {
     const container = document.getElementById('matchesContent');
+    container.innerHTML = '<div style="padding:24px;text-align:center;"><div class="skeleton" style="height:80px;margin-bottom:12px;"></div><div class="skeleton" style="height:80px;"></div></div>';
     try {
-        // Use wp-admin AJAX for matching (it's not in REST API)
         const formData = new FormData();
-        formData.append('action', 'moaveze_run_matching');
+        formData.append('action', 'moaveze_list_matches');
         formData.append('nonce', CONFIG.adminNonce);
-        formData.append('limit', '20');
-        const resp = await fetch(CONFIG.adminUrl + 'admin-ajax.php', {
-            method: 'POST',
-            body: formData,
-            credentials: 'same-origin'
-        });
+        const resp = await fetch(CONFIG.adminUrl + 'admin-ajax.php', { method: 'POST', body: formData, credentials: 'same-origin' });
         const data = await resp.json();
         if (data.success && data.data && data.data.matches && data.data.matches.length > 0) {
             const matches = data.data.matches;
             container.innerHTML = matches.map(m => {
-                const score = parseFloat(m.score || m.match_score || 0);
+                const score = parseFloat(m.score || 0);
                 const scoreClass = score >= 70 ? 'high' : (score >= 40 ? 'medium' : 'low');
-                return `<div class="match-card">
-                    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
-                        <span class="match-score ${scoreClass}">🎯 ${toPersianDigits(score.toFixed(0))}٪ تطابق</span>
-                        <button class="btn btn-primary btn-xs" onclick="connectParties(${m.id})">ارتباط طرفین</button>
-                    </div>
-                    <div class="match-sides">
-                        <div class="match-side">
-                            <h4>${m.side_a?.title || m.title_a || 'ملک A'}</h4>
-                            <p>${m.side_a?.district || m.district_a || ''} • ${m.side_a?.value_formatted || shortPrice(m.value_a) || ''}</p>
-                        </div>
-                        <div class="arrow">⇄</div>
-                        <div class="match-side">
-                            <h4>${m.side_b?.title || m.title_b || 'ملک B'}</h4>
-                            <p>${m.side_b?.district || m.district_b || ''} • ${m.side_b?.value_formatted || shortPrice(m.value_b) || ''}</p>
-                        </div>
-                    </div>
-                    ${m.suggestion ? '<p style="margin-top:12px;font-size:12px;color:#6366f1;background:#eef2ff;padding:8px;border-radius:8px;">💡 ' + m.suggestion + '</p>' : ''}
-                </div>`;
+                return `<div class="match-card"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;"><span class="match-score ${scoreClass}">🎯 ${toPersianDigits(score.toFixed(0))}٪ تطابق</span><div><button class="btn btn-primary btn-xs" onclick="connectParties(${m.id})">ارتباط طرفین</button> <span class="status-badge ${getStatusClass(m.status)}">${getStatusLabel(m.status)}</span></div></div><div class="match-sides"><div class="match-side"><h4>${m.title_a || 'ملک A'}</h4><p>${m.district_a || ''} • ${m.type_a || ''} • ${shortPrice(m.value_a)}</p><p style="font-size:11px;color:#94a3b8;">${toPersianDigits(m.area_a || 0)} م²</p></div><div class="arrow">⇄</div><div class="match-side"><h4>${m.title_b || 'ملک B'}</h4><p>${m.district_b || ''} • ${m.type_b || ''} • ${shortPrice(m.value_b)}</p><p style="font-size:11px;color:#94a3b8;">${toPersianDigits(m.area_b || 0)} م²</p></div></div>${m.suggestion ? '<p style="margin-top:12px;font-size:12px;color:#6366f1;background:#eef2ff;padding:8px 12px;border-radius:8px;">💡 ' + m.suggestion + '</p>' : ''}</div>`;
             }).join('');
         } else {
-            container.innerHTML = '<div class="empty-state"><div class="empty-icon">🎯</div><h3>تطبیقی یافت نشد</h3><p>هنوز تطبیق خودکاری بین آگهی‌ها یافت نشده است. دکمه "اجرای تطبیق جدید" را بزنید.</p></div>';
+            container.innerHTML = '<div class="empty-state"><div class="empty-icon">🎯</div><h3>تطبیقی یافت نشد</h3><p>دکمه «اجرای تطبیق جدید» را بزنید تا الگوریتم تطبیق اجرا شود.</p></div>';
         }
     } catch(e) {
-        container.innerHTML = '<div class="empty-state"><div class="empty-icon">🎯</div><h3>خطا در بارگذاری</h3><p>امکان بارگذاری تطبیق‌ها وجود ندارد.</p></div>';
+        container.innerHTML = '<div class="empty-state"><div class="empty-icon">🎯</div><h3>خطا در بارگذاری</h3><p>' + e.message + '</p></div>';
     }
+}
+
 }
 
 async function runMatching() {
@@ -983,15 +965,18 @@ async function loadValuationHistory() {
 // ═══════════════════════════════════════════════════════════════
 // HOUZEZ PROPERTIES
 // ═══════════════════════════════════════════════════════════════
-async function loadHouzezProperties() {
+async function loadHouzezProperties(page) {
     const search = document.getElementById('houzezSearch')?.value || '';
     const container = document.getElementById('houzezTable');
+    if (page) houzezPage = page;
     container.innerHTML = '<div style="padding:24px;"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text" style="width:60%"></div></div>';
     try {
         // Use WordPress core REST API for the 'property' post type
-        let url = CONFIG.homeUrl + 'wp-json/wp/v2/properties?per_page=20&_fields=id,title,property_meta,status,link';
+        // Filter: only 'sell' status (exclude rent/رهن/اجاره)
+        let url = CONFIG.homeUrl + 'wp-json/wp/v2/properties?per_page=20&page=' + houzezPage + '&_fields=id,title,property_meta,status,link&property_status=133';
         if (search) url += '&search=' + encodeURIComponent(search);
         const resp = await fetch(url, { credentials: 'same-origin', headers: { 'X-WP-Nonce': CONFIG.nonce } });
+        const totalPages = parseInt(resp.headers.get('X-WP-TotalPages')) || 1;
         const items = await resp.json();
         if (!Array.isArray(items) || items.length === 0) {
             container.innerHTML = '<div class="empty-state"><div class="empty-icon">🏗️</div><h3>ملکی یافت نشد</h3></div>';
@@ -1012,6 +997,7 @@ async function loadHouzezProperties() {
                     <td>${!hasExchange ? '<button class="btn btn-primary btn-xs" onclick="convertToExchange('+item.id+')">تبدیل به معاوضه</button>' : '<span style="color:#10b981;font-size:12px;">متصل</span>'}</td>
                 </tr>`;
             }).join('') + '</tbody></table>';
+        renderPagination('houzezPagination', houzezPage, totalPages, 'loadHouzezProperties');
     } catch(e) {
         container.innerHTML = '<div class="empty-state"><div class="empty-icon">🏗️</div><h3>خطا در بارگذاری</h3><p>'+e.message+'</p></div>';
     }
