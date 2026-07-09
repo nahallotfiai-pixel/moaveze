@@ -112,6 +112,7 @@ class Moaveze_Frontend_Dashboard {
             'rest_url'    => rest_url('moaveze/v1/'),
             'nonce'       => wp_create_nonce('wp_rest'),
             'admin_nonce' => wp_create_nonce('moaveze_admin_nonce'),
+            'valuation_nonce' => wp_create_nonce('moaveze_valuation'),
             'user'        => array(
                 'id'           => get_current_user_id(),
                 'display_name' => wp_get_current_user()->display_name,

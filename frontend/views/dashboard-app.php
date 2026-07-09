@@ -436,6 +436,7 @@ const CONFIG = {
     restUrl: <?php echo json_encode($dashboard_data['rest_url']); ?>,
     nonce: <?php echo json_encode($dashboard_data['nonce']); ?>,
     adminNonce: <?php echo json_encode($dashboard_data['admin_nonce']); ?>,
+    valuationNonce: <?php echo json_encode($dashboard_data['valuation_nonce']); ?>,
     userId: <?php echo (int) $dashboard_data['user']['id']; ?>,
     isAdmin: <?php echo $dashboard_data['user']['is_admin'] ? 'true' : 'false'; ?>,
     adminUrl: <?php echo json_encode($dashboard_data['admin_url']); ?>,
@@ -581,9 +582,10 @@ async function loadDashboard() {
         document.getElementById('statOffers').classList.remove('skeleton','skeleton-text');
         document.getElementById('statMatches').textContent = toPersianDigits(stats.total_completed || 0);
         document.getElementById('statMatches').classList.remove('skeleton','skeleton-text');
-        document.getElementById('statValuations').textContent = toPersianDigits(stats.total_listings || 0);
+        document.getElementById('statValuations').textContent = toPersianDigits(stats.total_completed || 0);
         document.getElementById('statValuations').classList.remove('skeleton','skeleton-text');
-        document.getElementById('statViews').textContent = toPersianDigits(stats.total_users || 0);
+        // Views: sum of all _moaveze_views_count meta values
+        document.getElementById('statViews').textContent = toPersianDigits(stats.total_views || 0);
         document.getElementById('statViews').classList.remove('skeleton','skeleton-text');
     } catch(e) {
         document.querySelectorAll('.stat-card .card-value').forEach(el => {
@@ -661,13 +663,14 @@ async function loadListings(page) {
         const hasPending = items.some(i => i.post_status === 'pending');
         document.getElementById('bulkApproveBtn').style.display = (hasPending && CONFIG.isAdmin) ? 'inline-flex' : 'none';
 
-        container.innerHTML = '<table class="data-table"><thead><tr><th>عنوان</th><th>نوع</th><th>منطقه</th><th>ارزش</th><th>متراژ</th><th>وضعیت</th><th>تاریخ</th><th>عملیات</th></tr></thead><tbody>' +
+        container.innerHTML = '<table class="data-table"><thead><tr><th>عنوان</th><th>نوع</th><th>منطقه</th><th>ارزش</th><th>متراژ</th><th>بازدید</th><th>وضعیت</th><th>تاریخ</th><th>عملیات</th></tr></thead><tbody>' +
             items.map(item => `<tr>
                 <td><strong>${item.title}</strong></td>
                 <td>${item.property_type?.name || '—'}</td>
                 <td>${item.district?.name || '—'}</td>
                 <td>${item.value_formatted || shortPrice(item.value)}</td>
                 <td>${toPersianDigits(item.area)} م²</td>
+                <td>${toPersianDigits(item.views || 0)}</td>
                 <td><span class="status-badge ${getStatusClass(item.post_status || 'publish')}">${getStatusLabel(item.post_status || 'publish')}</span></td>
                 <td>${item.created_at_jalali || toPersianDigits(item.time_ago || '')}</td>
                 <td>
@@ -1362,7 +1365,7 @@ async function runAIValuation() {
     try {
         const formData = new FormData();
         formData.append('action', 'moaveze_run_ai_valuation');
-        formData.append('nonce', CONFIG.adminNonce);
+        formData.append('nonce', CONFIG.valuationNonce);
         formData.append('post_id', postId);
         const resp = await fetch(CONFIG.adminUrl + 'admin-ajax.php', { method: 'POST', body: formData, credentials: 'same-origin' });
         const data = await resp.json();
@@ -1438,13 +1441,38 @@ async function loadHouzezProperties(page) {
                     <td>${toPersianDigits(listingId)}</td>
                     <td>${shortPrice(price)}</td>
                     <td>${hasExchange ? '<span style="color:#10b981;">✓ تبدیل شده</span>' : '<span style="color:#94a3b8;">—</span>'}</td>
-                    <td>${!hasExchange ? '<button class="btn btn-primary btn-xs" onclick="convertToExchange('+item.id+')">تبدیل به معاوضه</button>' : '<span style="color:#10b981;font-size:12px;">متصل</span>'}</td>
+                    <td>${!hasExchange ? '<button class="btn btn-primary btn-xs" onclick="convertToExchange('+item.id+')">تبدیل به معاوضه</button>' : '<span style="color:#10b981;font-size:12px;">متصل</span>'} <button class="btn btn-secondary btn-xs" onclick="runAIValuationForProperty('+item.id+')">📊 ارزش‌گذاری</button></td>
                 </tr>`;
             }).join('') + '</tbody></table>';
         renderPagination('houzezPagination', houzezPage, totalPages, 'loadHouzezProperties');
     } catch(e) {
         container.innerHTML = '<div class="empty-state"><div class="empty-icon">🏗️</div><h3>خطا در بارگذاری</h3><p>'+e.message+'</p></div>';
     }
+}
+
+async function runAIValuationForProperty(propertyId) {
+    showToast('در حال اجرای ارزش‌گذاری...', 'warning');
+    try {
+        const formData = new FormData();
+        formData.append('action', 'moaveze_run_ai_valuation');
+        formData.append('nonce', CONFIG.valuationNonce);
+        formData.append('post_id', propertyId);
+        const resp = await fetch(CONFIG.adminUrl + 'admin-ajax.php', { method: 'POST', body: formData, credentials: 'same-origin' });
+        const data = await resp.json();
+        if (data.success) {
+            const v = data.data;
+            showModal('نتیجه ارزش‌گذاری', `
+                <div class="val-result">
+                    <div class="val-price">${v.value_formatted || shortPrice(v.estimated_value || v.suggested_value || v.value)}</div>
+                    ${v.range ? '<div class="val-range">محدوده: ' + shortPrice(v.range.min) + ' تا ' + shortPrice(v.range.max) + '</div>' : ''}
+                    ${v.confidence ? '<p style="font-size:13px;margin-top:8px;">سطح اطمینان: ' + v.confidence + '</p>' : ''}
+                    ${v.methodology ? '<p style="font-size:12px;color:#64748b;margin-top:8px;">' + v.methodology + '</p>' : ''}
+                </div>
+            `);
+        } else {
+            showToast(data.data || 'خطا در ارزش‌گذاری', 'error');
+        }
+    } catch(e) { showToast('خطا در ارتباط با سرور', 'error'); }
 }
 
 async function convertToExchange(propertyId) {

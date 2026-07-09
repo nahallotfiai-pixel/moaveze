@@ -2110,6 +2110,12 @@ class Moaveze_REST_API {
 
         $total_users = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->users}");
 
+        $total_views = (int) $wpdb->get_var(
+            "SELECT COALESCE(SUM(CAST(meta_value AS UNSIGNED)), 0) FROM {$wpdb->postmeta} 
+             WHERE meta_key = '_moaveze_views_count' 
+             AND post_id IN (SELECT ID FROM {$wpdb->posts} WHERE post_type = 'moaveze_exchange' AND post_status = 'publish')"
+        );
+
         $total_offers = (int) $wpdb->get_var(
             "SELECT COUNT(*) FROM {$wpdb->prefix}moaveze_offers"
         );
@@ -2136,6 +2142,7 @@ class Moaveze_REST_API {
             'total_listings'   => $total_listings,
             'total_completed'  => $total_exchanges_completed,
             'total_users'      => $total_users,
+            'total_views'      => $total_views,
             'total_offers'     => $total_offers,
             'by_type'          => $types_stats,
             'top_districts'    => $district_stats,
