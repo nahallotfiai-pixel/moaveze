@@ -399,6 +399,15 @@ input,select,textarea{font-family:inherit;outline:none;}
 </div>
 
 <script>
+// Global error handler: prevent any unhandled JS error from
+// killing the entire page (navigation must ALWAYS work)
+window.addEventListener('error', function(e) {
+    console.error('Moaveze Dashboard Error:', e.message, e.filename, e.lineno);
+});
+window.addEventListener('unhandledrejection', function(e) {
+    console.error('Moaveze Dashboard Unhandled Promise:', e.reason);
+    e.preventDefault(); // Prevent the error from propagating
+});
 // ═══════════════════════════════════════════════════════════════
 // CONFIGURATION
 // ═══════════════════════════════════════════════════════════════
@@ -1176,7 +1185,8 @@ function toggleSetting(el, key) {
 // INITIALIZATION
 // ═══════════════════════════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', function() {
-    loadDashboard();
+    // Load dashboard data in background - NEVER block navigation
+    setTimeout(function() { loadDashboard(); }, 100);
     // Close sidebar on mobile when clicking outside
     document.addEventListener('click', function(e) {
         const sidebar = document.getElementById('sidebar');
