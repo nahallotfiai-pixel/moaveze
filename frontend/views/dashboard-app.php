@@ -445,7 +445,7 @@ function debounce(fn, delay) {
     };
 }
 
-async function apiCall(endpoint, method = 'GET', body = null) {
+async function apiCall(endpoint, method = 'GET', body = null, silent = false) {
     const opts = {
         method,
         headers: {
@@ -462,7 +462,7 @@ async function apiCall(endpoint, method = 'GET', body = null) {
         if (!resp.ok) throw new Error(data?.error?.message || data?.message || 'خطای سرور');
         return data;
     } catch(err) {
-        showToast(err.message || 'خطا در ارتباط با سرور', 'error');
+        if (!silent) showToast(err.message || 'خطا در ارتباط با سرور', 'error');
         throw err;
     }
 }
@@ -541,38 +541,53 @@ function toggleSidebar() {
 // HOME / DASHBOARD
 // ═══════════════════════════════════════════════════════════════
 async function loadDashboard() {
+    // Load stats independently (don't let one failure block everything)
     try {
-        const [statsResp, offersResp, listingsResp] = await Promise.all([
-            apiCall('stats'),
-            apiCall('offers/received?per_page=1'),
-            apiCall('exchanges/my?per_page=1&status=pending')
-        ]);
+        const statsResp = await apiCall('stats', 'GET', null, true);
         const stats = statsResp.data || statsResp;
         document.getElementById('statTotal').textContent = toPersianDigits(stats.total_listings || 0);
         document.getElementById('statTotal').classList.remove('skeleton','skeleton-text');
-        document.getElementById('statPending').textContent = toPersianDigits(listingsResp.meta?.total || 0);
-        document.getElementById('statPending').classList.remove('skeleton','skeleton-text');
         document.getElementById('statOffers').textContent = toPersianDigits(stats.total_offers || 0);
         document.getElementById('statOffers').classList.remove('skeleton','skeleton-text');
         document.getElementById('statMatches').textContent = toPersianDigits(stats.total_completed || 0);
         document.getElementById('statMatches').classList.remove('skeleton','skeleton-text');
-        document.getElementById('statValuations').textContent = toPersianDigits(0);
+        document.getElementById('statValuations').textContent = toPersianDigits(stats.total_listings || 0);
         document.getElementById('statValuations').classList.remove('skeleton','skeleton-text');
-        document.getElementById('statViews').textContent = toPersianDigits(0);
+        document.getElementById('statViews').textContent = toPersianDigits(stats.total_users || 0);
         document.getElementById('statViews').classList.remove('skeleton','skeleton-text');
-        // Update offers badge
-        if (offersResp.meta && offersResp.meta.total > 0) {
+    } catch(e) {
+        document.querySelectorAll('.stat-card .card-value').forEach(el => {
+            el.textContent = '—';
+            el.classList.remove('skeleton','skeleton-text');
+        });
+    }
+
+    // Pending count (separate try/catch so it doesn't block)
+    try {
+        const pendResp = await apiCall('exchanges?per_page=1&status=pending', 'GET', null, true);
+        document.getElementById('statPending').textContent = toPersianDigits(pendResp.meta?.total || 0);
+    } catch(e) {
+        document.getElementById('statPending').textContent = '—';
+    }
+    document.getElementById('statPending').classList.remove('skeleton','skeleton-text');
+
+    // Offers badge
+    try {
+        const offResp = await apiCall('offers/received?per_page=1&status=pending', 'GET', null, true);
+        if (offResp.meta && offResp.meta.total > 0) {
             const badge = document.getElementById('offersCount');
-            badge.textContent = toPersianDigits(offersResp.meta.total);
+            badge.textContent = toPersianDigits(offResp.meta.total);
             badge.style.display = 'inline';
         }
-        loadActivityFeed();
-    } catch(e) { console.error(e); }
+    } catch(e) { /* silent */ }
+
+    // Activity feed
+    loadActivityFeed();
 }
 
 async function loadActivityFeed() {
     try {
-        const resp = await apiCall('notifications?per_page=10');
+        const resp = await apiCall('notifications?per_page=10', 'GET', null, true);
         const items = resp.data?.items || [];
         const container = document.getElementById('activityFeed');
         if (items.length === 0) {
