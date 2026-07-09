@@ -302,14 +302,30 @@ input,select,textarea{font-family:inherit;outline:none;}
 </div>
 <div id="valQuick" class="panel">
 <div class="form-row">
-<div class="form-group"><label>متراژ (متر مربع)</label><input type="number" class="form-control" id="valArea" placeholder="مثلاً ۱۲۰"></div>
+<div class="form-group"><label>متراژ (متر مربع) *</label><input type="number" class="form-control" id="valArea" placeholder="مثلاً ۱۲۰" min="10"></div>
 <div class="form-group"><label>نوع ملک</label><select class="form-control" id="valType"><option value="">انتخاب کنید</option></select></div>
 </div>
 <div class="form-row">
 <div class="form-group"><label>منطقه</label><select class="form-control" id="valDistrict"><option value="">انتخاب کنید</option></select></div>
-<div class="form-group"><label>تعداد اتاق</label><input type="number" class="form-control" id="valRooms" placeholder="مثلاً ۳"></div>
+<div class="form-group"><label>تعداد اتاق</label><input type="number" class="form-control" id="valRooms" placeholder="مثلاً ۳" min="0" max="10"></div>
 </div>
-<button class="btn btn-primary" onclick="runQuickEstimate()">💡 تخمین قیمت</button>
+<div class="form-row">
+<div class="form-group"><label>سال ساخت</label><input type="number" class="form-control" id="valYear" placeholder="مثلاً ۱۴۰۰" min="1350" max="1410"></div>
+<div class="form-group"><label>طبقه</label><input type="number" class="form-control" id="valFloor" placeholder="مثلاً ۳" min="0" max="50"></div>
+</div>
+<div class="form-row">
+<div class="form-group"><label>امکانات</label>
+<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:4px;">
+<label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;background:#f8fafc;padding:4px 10px;border-radius:6px;border:1px solid #e2e8f0;"><input type="checkbox" class="val-feature" value="parking"> پارکینگ</label>
+<label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;background:#f8fafc;padding:4px 10px;border-radius:6px;border:1px solid #e2e8f0;"><input type="checkbox" class="val-feature" value="elevator"> آسانسور</label>
+<label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;background:#f8fafc;padding:4px 10px;border-radius:6px;border:1px solid #e2e8f0;"><input type="checkbox" class="val-feature" value="storage"> انباری</label>
+<label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;background:#f8fafc;padding:4px 10px;border-radius:6px;border:1px solid #e2e8f0;"><input type="checkbox" class="val-feature" value="balcony"> بالکن</label>
+<label style="display:flex;align-items:center;gap:4px;font-size:13px;cursor:pointer;background:#f8fafc;padding:4px 10px;border-radius:6px;border:1px solid #e2e8f0;"><input type="checkbox" class="val-feature" value="pool"> استخر</label>
+</div>
+</div>
+<div class="form-group"><label>توضیحات تکمیلی</label><textarea class="form-control" id="valNotes" rows="2" placeholder="اطلاعات اضافی مثل نوع نما، دسترسی‌ها..."></textarea></div>
+</div>
+<button class="btn btn-primary" onclick="runQuickEstimate()" style="margin-top:12px;">💡 تخمین قیمت</button>
 <div id="quickEstimateResult"></div>
 </div>
 <div id="valFull" class="panel" style="display:none;">
@@ -388,6 +404,7 @@ input,select,textarea{font-family:inherit;outline:none;}
 const CONFIG = {
     restUrl: <?php echo json_encode($dashboard_data['rest_url']); ?>,
     nonce: <?php echo json_encode($dashboard_data['nonce']); ?>,
+    adminNonce: <?php echo json_encode($dashboard_data['admin_nonce']); ?>,
     userId: <?php echo (int) $dashboard_data['user']['id']; ?>,
     isAdmin: <?php echo $dashboard_data['user']['is_admin'] ? 'true' : 'false'; ?>,
     adminUrl: <?php echo json_encode($dashboard_data['admin_url']); ?>,
@@ -607,7 +624,9 @@ async function loadListings(page) {
                 <td><span class="status-badge ${getStatusClass(item.post_status || 'publish')}">${getStatusLabel(item.post_status || 'publish')}</span></td>
                 <td>${item.created_at_jalali || toPersianDigits(item.time_ago || '')}</td>
                 <td>
-                    <button class="btn btn-secondary btn-xs" onclick="viewListingDetail(${item.id})">مشاهده</button>
+                    <button class="btn btn-secondary btn-xs" onclick="viewListingDetail(${item.id})">جزئیات</button>
+                    <a href="${CONFIG.adminUrl}post.php?post=${item.id}&action=edit" target="_blank" class="btn btn-secondary btn-xs">ویرایش</a>
+                    <a href="${item.url || '#'}" target="_blank" class="btn btn-secondary btn-xs">صفحه آگهی</a>
                     ${item.post_status === 'pending' && CONFIG.isAdmin ? '<button class="btn btn-success btn-xs" onclick="approveListing('+item.id+')">تأیید</button>' : ''}
                 </td>
             </tr>`).join('') + '</tbody></table>';
@@ -732,7 +751,7 @@ async function loadMatches() {
         // Use wp-admin AJAX for matching (it's not in REST API)
         const formData = new FormData();
         formData.append('action', 'moaveze_run_matching');
-        formData.append('nonce', CONFIG.nonce);
+        formData.append('nonce', CONFIG.adminNonce);
         formData.append('limit', '20');
         const resp = await fetch(CONFIG.adminUrl + 'admin-ajax.php', {
             method: 'POST',
@@ -777,7 +796,7 @@ async function runMatching() {
     try {
         const formData = new FormData();
         formData.append('action', 'moaveze_run_matching');
-        formData.append('nonce', CONFIG.nonce);
+        formData.append('nonce', CONFIG.adminNonce);
         const resp = await fetch(CONFIG.adminUrl + 'admin-ajax.php', { method: 'POST', body: formData, credentials: 'same-origin' });
         const data = await resp.json();
         if (data.success) {
@@ -793,7 +812,7 @@ async function connectParties(matchId) {
     try {
         const formData = new FormData();
         formData.append('action', 'moaveze_get_match_full_details');
-        formData.append('nonce', CONFIG.nonce);
+        formData.append('nonce', CONFIG.adminNonce);
         formData.append('match_id', matchId);
         const resp = await fetch(CONFIG.adminUrl + 'admin-ajax.php', { method: 'POST', body: formData, credentials: 'same-origin' });
         const data = await resp.json();
@@ -862,7 +881,12 @@ async function runQuickEstimate() {
     const type = document.getElementById('valType').value;
     const district = document.getElementById('valDistrict').value;
     const rooms = parseInt(document.getElementById('valRooms').value) || 0;
-    if (!area || area < 10) { showToast('لطفاً متراژ معتبر وارد کنید', 'warning'); return; }
+    const yearBuilt = parseInt(document.getElementById('valYear').value) || 0;
+    const floor = parseInt(document.getElementById('valFloor').value) || 0;
+    const features = [];
+    document.querySelectorAll('.val-feature:checked').forEach(cb => features.push(cb.value));
+    const notes = document.getElementById('valNotes').value;
+    if (!area || area < 10) { showToast('لطفاً متراژ معتبر وارد کنید (حداقل ۱۰ متر)', 'warning'); return; }
     const resultDiv = document.getElementById('quickEstimateResult');
     resultDiv.innerHTML = '<div class="skeleton" style="height:120px;margin-top:16px;"></div>';
     try {
@@ -870,6 +894,10 @@ async function runQuickEstimate() {
         if (type) body.type = type;
         if (district) body.district = district;
         if (rooms) body.rooms = rooms;
+        if (yearBuilt) body.year_built = yearBuilt;
+        if (floor) body.floor = floor;
+        if (features.length) body.features = features;
+        if (notes) body.notes = notes;
         const resp = await apiCall('valuation/estimate', 'POST', body);
         const est = resp.data?.estimate || {};
         const confClass = est.confidence === 'high' ? 'conf-high' : (est.confidence === 'medium' ? 'conf-medium' : 'conf-low');
@@ -908,7 +936,7 @@ async function runAIValuation() {
     try {
         const formData = new FormData();
         formData.append('action', 'moaveze_ai_valuation');
-        formData.append('nonce', CONFIG.nonce);
+        formData.append('nonce', CONFIG.adminNonce);
         formData.append('post_id', postId);
         const resp = await fetch(CONFIG.adminUrl + 'admin-ajax.php', { method: 'POST', body: formData, credentials: 'same-origin' });
         const data = await resp.json();
@@ -958,30 +986,34 @@ async function loadValuationHistory() {
 async function loadHouzezProperties() {
     const search = document.getElementById('houzezSearch')?.value || '';
     const container = document.getElementById('houzezTable');
+    container.innerHTML = '<div style="padding:24px;"><div class="skeleton skeleton-text"></div><div class="skeleton skeleton-text" style="width:60%"></div></div>';
     try {
-        const formData = new FormData();
-        formData.append('action', 'moaveze_import_from_houzez');
-        formData.append('nonce', CONFIG.nonce);
-        if (search) formData.append('search', search);
-        formData.append('list_only', '1');
-        const resp = await fetch(CONFIG.adminUrl + 'admin-ajax.php', { method: 'POST', body: formData, credentials: 'same-origin' });
-        const data = await resp.json();
-        if (data.success && data.data && data.data.length > 0) {
-            const items = data.data;
-            container.innerHTML = '<table class="data-table"><thead><tr><th>عنوان</th><th>شناسه</th><th>قیمت</th><th>وضعیت</th><th>معاوضه</th><th>عملیات</th></tr></thead><tbody>' +
-                items.map(item => `<tr>
-                    <td><strong>${item.title || ''}</strong></td>
-                    <td>${toPersianDigits(item.id || item.listing_id || '')}</td>
-                    <td>${item.price_formatted || shortPrice(item.price) || '—'}</td>
-                    <td><span class="status-badge ${getStatusClass(item.status || 'publish')}">${getStatusLabel(item.status || 'publish')}</span></td>
-                    <td>${item.has_exchange ? '<span style="color:#10b981;">✓ تبدیل شده</span>' : '<span style="color:#94a3b8;">—</span>'}</td>
-                    <td>${!item.has_exchange ? '<button class="btn btn-primary btn-xs" onclick="convertToExchange('+item.id+')">تبدیل به معاوضه</button>' : ''}</td>
-                </tr>`).join('') + '</tbody></table>';
-        } else {
-            container.innerHTML = '<div class="empty-state"><div class="empty-icon">🏗️</div><h3>ملکی یافت نشد</h3><p>قالب Houzez فعال نیست یا آگهی فروشی ثبت نشده.</p></div>';
+        // Use WordPress core REST API for the 'property' post type
+        let url = CONFIG.homeUrl + 'wp-json/wp/v2/properties?per_page=20&_fields=id,title,property_meta,status,link';
+        if (search) url += '&search=' + encodeURIComponent(search);
+        const resp = await fetch(url, { credentials: 'same-origin', headers: { 'X-WP-Nonce': CONFIG.nonce } });
+        const items = await resp.json();
+        if (!Array.isArray(items) || items.length === 0) {
+            container.innerHTML = '<div class="empty-state"><div class="empty-icon">🏗️</div><h3>ملکی یافت نشد</h3></div>';
+            return;
         }
+        container.innerHTML = '<table class="data-table"><thead><tr><th>عنوان</th><th>کد آگهی</th><th>قیمت</th><th>وضعیت معاوضه</th><th>عملیات</th></tr></thead><tbody>' +
+            items.map(item => {
+                const meta = item.property_meta || {};
+                const price = meta.fave_property_price ? meta.fave_property_price[0] || meta.fave_property_price : '';
+                const listingId = meta.fave_property_id ? meta.fave_property_id[0] || meta.fave_property_id : '';
+                const hasExchange = meta._moaveze_exchange_linked ? true : false;
+                const title = item.title?.rendered || item.title || '';
+                return `<tr>
+                    <td><strong>${title}</strong></td>
+                    <td>${toPersianDigits(listingId)}</td>
+                    <td>${shortPrice(price)}</td>
+                    <td>${hasExchange ? '<span style="color:#10b981;">✓ تبدیل شده</span>' : '<span style="color:#94a3b8;">—</span>'}</td>
+                    <td>${!hasExchange ? '<button class="btn btn-primary btn-xs" onclick="convertToExchange('+item.id+')">تبدیل به معاوضه</button>' : '<span style="color:#10b981;font-size:12px;">متصل</span>'}</td>
+                </tr>`;
+            }).join('') + '</tbody></table>';
     } catch(e) {
-        container.innerHTML = '<div class="empty-state"><div class="empty-icon">🏗️</div><h3>خطا در بارگذاری</h3><p>امکان دریافت لیست املاک Houzez وجود ندارد.</p></div>';
+        container.innerHTML = '<div class="empty-state"><div class="empty-icon">🏗️</div><h3>خطا در بارگذاری</h3><p>'+e.message+'</p></div>';
     }
 }
 
@@ -990,7 +1022,7 @@ async function convertToExchange(propertyId) {
     try {
         const formData = new FormData();
         formData.append('action', 'moaveze_convert_to_exchange');
-        formData.append('nonce', CONFIG.nonce);
+        formData.append('nonce', CONFIG.adminNonce);
         formData.append('property_id', propertyId);
         const resp = await fetch(CONFIG.adminUrl + 'admin-ajax.php', { method: 'POST', body: formData, credentials: 'same-origin' });
         const data = await resp.json();
@@ -1011,7 +1043,7 @@ async function loadConsultants() {
     try {
         const formData = new FormData();
         formData.append('action', 'moaveze_get_consultants');
-        formData.append('nonce', CONFIG.nonce);
+        formData.append('nonce', CONFIG.adminNonce);
         const resp = await fetch(CONFIG.adminUrl + 'admin-ajax.php', { method: 'POST', body: formData, credentials: 'same-origin' });
         const data = await resp.json();
         if (data.success && data.data && data.data.length > 0) {
@@ -1045,7 +1077,7 @@ async function searchUsers() {
     try {
         const formData = new FormData();
         formData.append('action', 'moaveze_search_users');
-        formData.append('nonce', CONFIG.nonce);
+        formData.append('nonce', CONFIG.adminNonce);
         formData.append('search', query);
         const resp = await fetch(CONFIG.adminUrl + 'admin-ajax.php', { method: 'POST', body: formData, credentials: 'same-origin' });
         const data = await resp.json();
@@ -1069,7 +1101,7 @@ async function addConsultant(userId) {
     try {
         const formData = new FormData();
         formData.append('action', 'moaveze_add_consultant');
-        formData.append('nonce', CONFIG.nonce);
+        formData.append('nonce', CONFIG.adminNonce);
         formData.append('user_id', userId);
         const resp = await fetch(CONFIG.adminUrl + 'admin-ajax.php', { method: 'POST', body: formData, credentials: 'same-origin' });
         const data = await resp.json();
@@ -1089,7 +1121,7 @@ async function removeConsultant(userId) {
     try {
         const formData = new FormData();
         formData.append('action', 'moaveze_remove_consultant');
-        formData.append('nonce', CONFIG.nonce);
+        formData.append('nonce', CONFIG.adminNonce);
         formData.append('user_id', userId);
         const resp = await fetch(CONFIG.adminUrl + 'admin-ajax.php', { method: 'POST', body: formData, credentials: 'same-origin' });
         const data = await resp.json();
@@ -1110,7 +1142,7 @@ async function loadSettings() {
     try {
         const formData = new FormData();
         formData.append('action', 'moaveze_get_settings');
-        formData.append('nonce', CONFIG.nonce);
+        formData.append('nonce', CONFIG.adminNonce);
         const resp = await fetch(CONFIG.adminUrl + 'admin-ajax.php', { method: 'POST', body: formData, credentials: 'same-origin' });
         const data = await resp.json();
         if (data.success && data.data) {
@@ -1130,7 +1162,7 @@ function toggleSetting(el, key) {
     const value = el.classList.contains('on') ? '1' : '0';
     const formData = new FormData();
     formData.append('action', 'moaveze_save_setting');
-    formData.append('nonce', CONFIG.nonce);
+    formData.append('nonce', CONFIG.adminNonce);
     formData.append('key', key);
     formData.append('value', value);
     fetch(CONFIG.adminUrl + 'admin-ajax.php', { method: 'POST', body: formData, credentials: 'same-origin' })

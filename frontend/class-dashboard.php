@@ -109,9 +109,10 @@ class Moaveze_Frontend_Dashboard {
     private function render_dashboard() {
         // Prepare data needed by the view
         $dashboard_data = array(
-            'rest_url'   => rest_url('moaveze/v1/'),
-            'nonce'      => wp_create_nonce('wp_rest'),
-            'user'       => array(
+            'rest_url'    => rest_url('moaveze/v1/'),
+            'nonce'       => wp_create_nonce('wp_rest'),
+            'admin_nonce' => wp_create_nonce('moaveze_admin_nonce'),
+            'user'        => array(
                 'id'           => get_current_user_id(),
                 'display_name' => wp_get_current_user()->display_name,
                 'avatar'       => get_avatar_url(get_current_user_id(), array('size' => 80)),
