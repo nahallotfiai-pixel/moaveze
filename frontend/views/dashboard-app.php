@@ -297,6 +297,12 @@ input,select,textarea{font-family:inherit;outline:none;}
 <option value="in_progress">در حال بررسی</option>
 <option value="completed">تکمیل‌شده</option>
 </select>
+<select class="filter-select" id="matchScoreFilter" onchange="loadMatches()">
+<option value="0">همه امتیازها</option>
+<option value="70">بالای ۷۰٪</option>
+<option value="50">بالای ۵۰٪</option>
+<option value="30">بالای ۳۰٪</option>
+</select>
 </div>
 <div id="matchesContent"><div class="skeleton skeleton-card" style="margin-bottom:16px;"></div><div class="skeleton skeleton-card"></div></div>
 </div>
@@ -338,6 +344,12 @@ input,select,textarea{font-family:inherit;outline:none;}
 <div id="quickEstimateResult"></div>
 </div>
 <div id="valFull" class="panel" style="display:none;">
+<div class="form-group"><label>نوع آگهی</label>
+<select class="form-control" id="valListingType" onchange="loadListingsForValuation()">
+<option value="exchange">آگهی معاوضه</option>
+<option value="property">آگهی فروش (Houzez)</option>
+</select>
+</div>
 <div class="form-group"><label>انتخاب آگهی</label><select class="form-control" id="valListingSelect"><option value="">در حال بارگذاری...</option></select></div>
 <button class="btn btn-primary" onclick="runAIValuation()">🤖 اجرای ارزش‌گذاری هوش مصنوعی</button>
 <div id="aiValuationResult"></div>
@@ -794,17 +806,24 @@ async function loadMatches() {
     const container = document.getElementById('matchesContent');
     container.innerHTML = '<div style="padding:24px;text-align:center;"><div class="skeleton" style="height:80px;margin-bottom:12px;"></div><div class="skeleton" style="height:80px;"></div></div>';
     const statusFilter = document.getElementById('matchStatusFilter').value;
+    const scoreFilter = parseInt(document.getElementById('matchScoreFilter').value) || 0;
     try {
         const formData = new FormData();
         formData.append('action', 'moaveze_list_matches');
         formData.append('nonce', CONFIG.adminNonce);
-        if (statusFilter && statusFilter !== 'all') {
-            formData.append('status', statusFilter);
-        }
+        if (statusFilter && statusFilter !== 'all') formData.append('status', statusFilter);
         const resp = await fetch(CONFIG.adminUrl + 'admin-ajax.php', { method: 'POST', body: formData, credentials: 'same-origin' });
         const data = await resp.json();
         if (data.success && data.data && data.data.matches && data.data.matches.length > 0) {
-            const matches = data.data.matches;
+            let matches = data.data.matches;
+            // Client-side score filter
+            if (scoreFilter > 0) matches = matches.filter(m => parseFloat(m.score) >= scoreFilter);
+            // Filter out rejected/dismissed matches
+            matches = matches.filter(m => m.status !== 'rejected');
+            if (matches.length === 0) {
+                container.innerHTML = '<div class="empty-state"><div class="empty-icon">🎯</div><h3>تطبیقی با این فیلتر یافت نشد</h3></div>';
+                return;
+            }
             container.innerHTML = matches.map(m => {
                 const score = parseFloat(m.score || 0);
                 const scoreClass = score >= 70 ? 'high' : (score >= 40 ? 'medium' : 'low');
@@ -813,6 +832,9 @@ async function loadMatches() {
                 const reasonsHtml = reasons.length > 0
                     ? '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:12px;">' + reasons.map(r => '<span style="display:inline-block;padding:3px 10px;background:#eef2ff;color:#4f46e5;border-radius:20px;font-size:11px;font-weight:500;">✓ ' + r + '</span>').join('') + '</div>'
                     : '';
+                // Listing links
+                const linkA = m.post_id_a ? '<a href="' + CONFIG.homeUrl + '?p=' + m.post_id_a + '" target="_blank" style="font-size:11px;color:#6366f1;text-decoration:underline;">مشاهده آگهی</a>' : '';
+                const linkB = m.post_id_b ? '<a href="' + CONFIG.homeUrl + '?p=' + m.post_id_b + '" target="_blank" style="font-size:11px;color:#6366f1;text-decoration:underline;">مشاهده آگهی</a>' : '';
                 return `<div class="match-card">
                     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
                         <span class="match-score ${scoreClass}">🎯 ${toPersianDigits(score.toFixed(0))}٪ تطابق</span>
@@ -824,6 +846,7 @@ async function loadMatches() {
                             <p>${m.district_a || '—'} • ${m.type_a || '—'}</p>
                             <p style="font-size:12px;color:#475569;margin-top:4px;">ارزش: ${shortPrice(m.value_a)}</p>
                             <p style="font-size:11px;color:#94a3b8;">${toPersianDigits(m.area_a || 0)} م²</p>
+                            ${linkA}
                         </div>
                         <div class="arrow">⇄</div>
                         <div class="match-side">
@@ -831,13 +854,15 @@ async function loadMatches() {
                             <p>${m.district_b || '—'} • ${m.type_b || '—'}</p>
                             <p style="font-size:12px;color:#475569;margin-top:4px;">ارزش: ${shortPrice(m.value_b)}</p>
                             <p style="font-size:11px;color:#94a3b8;">${toPersianDigits(m.area_b || 0)} م²</p>
+                            ${linkB}
                         </div>
                     </div>
                     ${reasonsHtml}
                     <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:16px;padding-top:12px;border-top:1px solid #f1f5f9;">
                         <button class="btn btn-secondary btn-xs" onclick="assignConsultant(${m.id})">👤 اختصاص مشاور</button>
                         <button class="btn btn-primary btn-xs" onclick="connectParties(${m.id})">📞 ارتباط طرفین</button>
-                        <button class="btn btn-secondary btn-xs" onclick="getAISuggestion(${m.id})">🤖 پیشنهاد هوش مصنوعی</button>
+                        <button class="btn btn-secondary btn-xs" onclick="getAISuggestion(${m.id})">🤖 پیشنهاد AI</button>
+                        <button class="btn btn-danger btn-xs" onclick="dismissMatch(${m.id})">✗ رد تطبیق</button>
                         <select class="filter-select" style="padding:4px 10px;font-size:12px;min-width:auto;border-radius:6px;" onchange="changeMatchStatus(${m.id}, this.value)">
                             <option value="" disabled selected>تغییر وضعیت</option>
                             <option value="new">جدید</option>
@@ -855,6 +880,11 @@ async function loadMatches() {
     } catch(e) {
         container.innerHTML = '<div class="empty-state"><div class="empty-icon">🎯</div><h3>خطا در بارگذاری</h3><p>' + (e.message || 'خطا') + '</p></div>';
     }
+}
+
+async function dismissMatch(matchId) {
+    if (!confirm('آیا از رد این تطبیق مطمئن هستید؟ این تطبیق دیگر نمایش داده نخواهد شد.')) return;
+    await changeMatchStatus(matchId, 'rejected');
 }
 
 async function runMatching() {
@@ -1294,25 +1324,44 @@ async function runQuickEstimate() {
 }
 
 async function loadListingsForValuation() {
+    const select = document.getElementById('valListingSelect');
+    select.innerHTML = '<option value="">در حال بارگذاری...</option>';
+    const type = document.getElementById('valListingType').value;
     try {
-        const resp = await apiCall('exchanges/my?per_page=50');
-        const items = resp.data?.items || [];
-        const select = document.getElementById('valListingSelect');
-        select.innerHTML = '<option value="">انتخاب آگهی...</option>';
-        items.forEach(item => {
-            select.innerHTML += '<option value="'+item.id+'">'+item.title+' ('+toPersianDigits(item.area)+' م²)</option>';
-        });
-    } catch(e) { console.error(e); }
+        if (type === 'exchange') {
+            const resp = await apiCall('exchanges?per_page=50', 'GET', null, true);
+            const items = resp.data?.items || [];
+            select.innerHTML = '<option value="">انتخاب آگهی معاوضه...</option>';
+            items.forEach(item => {
+                select.innerHTML += '<option value="' + item.id + '" data-type="exchange">' + item.title + ' (' + toPersianDigits(item.area) + ' م²)</option>';
+            });
+        } else {
+            // Load Houzez properties
+            const resp = await fetch(CONFIG.homeUrl + 'wp-json/wp/v2/properties?per_page=50&property_status=133&_fields=id,title,property_meta', { credentials: 'same-origin', headers: { 'X-WP-Nonce': CONFIG.nonce } });
+            const items = await resp.json();
+            select.innerHTML = '<option value="">انتخاب آگهی فروش...</option>';
+            if (Array.isArray(items)) {
+                items.forEach(item => {
+                    const title = item.title?.rendered || item.title || '';
+                    const area = item.property_meta?.fave_property_size?.[0] || item.property_meta?.fave_property_size || '';
+                    select.innerHTML += '<option value="' + item.id + '" data-type="property">' + title + (area ? ' (' + toPersianDigits(area) + ' م²)' : '') + '</option>';
+                });
+            }
+        }
+    } catch(e) {
+        select.innerHTML = '<option value="">خطا در بارگذاری</option>';
+    }
 }
 
 async function runAIValuation() {
-    const postId = document.getElementById('valListingSelect').value;
+    const select = document.getElementById('valListingSelect');
+    const postId = select.value;
     if (!postId) { showToast('لطفاً یک آگهی انتخاب کنید', 'warning'); return; }
     const resultDiv = document.getElementById('aiValuationResult');
     resultDiv.innerHTML = '<div class="skeleton" style="height:150px;margin-top:16px;"></div>';
     try {
         const formData = new FormData();
-        formData.append('action', 'moaveze_ai_valuation');
+        formData.append('action', 'moaveze_run_ai_valuation');
         formData.append('nonce', CONFIG.adminNonce);
         formData.append('post_id', postId);
         const resp = await fetch(CONFIG.adminUrl + 'admin-ajax.php', { method: 'POST', body: formData, credentials: 'same-origin' });

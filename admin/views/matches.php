@@ -62,6 +62,9 @@ $matches = $wpdb->get_results("SELECT * FROM $table_matches ORDER BY match_score
                         <div class="match-side match-side-a">
                             <h4><?php echo esc_html($exchange_a->post_title ?? 'ملک A'); ?></h4>
                             <p class="match-value"><?php echo esc_html(Moaveze_Helpers::short_price(get_post_meta($exchange_a->ID ?? 0, '_moaveze_property_value', true))); ?></p>
+                            <?php if ($exchange_a) : ?>
+                                <a href="<?php echo esc_url(get_permalink($exchange_a->ID)); ?>" target="_blank" style="font-size:11px;color:#6366f1;">مشاهده آگهی</a>
+                            <?php endif; ?>
                         </div>
                         <div class="match-arrow">
                             <span class="dashicons dashicons-leftright"></span>
@@ -69,6 +72,9 @@ $matches = $wpdb->get_results("SELECT * FROM $table_matches ORDER BY match_score
                         <div class="match-side match-side-b">
                             <h4><?php echo esc_html($exchange_b->post_title ?? 'ملک B'); ?></h4>
                             <p class="match-value"><?php echo esc_html(Moaveze_Helpers::short_price(get_post_meta($exchange_b->ID ?? 0, '_moaveze_property_value', true))); ?></p>
+                            <?php if ($exchange_b) : ?>
+                                <a href="<?php echo esc_url(get_permalink($exchange_b->ID)); ?>" target="_blank" style="font-size:11px;color:#6366f1;">مشاهده آگهی</a>
+                            <?php endif; ?>
                         </div>
                     </div>
 
@@ -100,6 +106,9 @@ $matches = $wpdb->get_results("SELECT * FROM $table_matches ORDER BY match_score
                             <?php if ($match->ai_suggestion_status === 'approved') : ?>
                                 <span class="ai-suggest-badge">✓</span>
                             <?php endif; ?>
+                        </button>
+                        <button class="button button-link-delete dismiss-match-btn" data-match-id="<?php echo esc_attr($match->id); ?>" style="color:#dc2626;">
+                            <span class="dashicons dashicons-dismiss"></span> رد تطبیق
                         </button>
                     </div>
                     <!-- AI suggestion panel: filled in on demand via AJAX -->

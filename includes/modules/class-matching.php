@@ -162,6 +162,15 @@ class Moaveze_Matching {
         $matches_table = $wpdb->prefix . 'moaveze_matches';
         $exchanges_table = $wpdb->prefix . 'moaveze_exchanges';
 
+        $status_filter = sanitize_text_field($_POST['status'] ?? '');
+        $where_status = '';
+        if ($status_filter && in_array($status_filter, array('new', 'assigned', 'in_progress', 'completed', 'rejected'))) {
+            $where_status = $wpdb->prepare(" AND m.status = %s", $status_filter);
+        } else {
+            // By default, hide rejected matches
+            $where_status = " AND m.status != 'rejected'";
+        }
+
         $matches = $wpdb->get_results(
             "SELECT m.*, 
                     a.post_id as post_id_a, a.property_type as type_a, a.district as district_a, 
@@ -171,6 +180,7 @@ class Moaveze_Matching {
              FROM $matches_table m
              LEFT JOIN $exchanges_table a ON m.exchange_id_a = a.id
              LEFT JOIN $exchanges_table b ON m.exchange_id_b = b.id
+             WHERE 1=1 $where_status
              ORDER BY m.match_score DESC
              LIMIT 50"
         );
