@@ -795,8 +795,6 @@ async function loadMatches() {
     }
 }
 
-}
-
 async function runMatching() {
     showToast('در حال اجرای الگوریتم تطبیق...', 'warning');
     try {
