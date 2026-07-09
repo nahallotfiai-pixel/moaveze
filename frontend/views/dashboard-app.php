@@ -1553,10 +1553,44 @@ async function runAIValuation() {
 }
 
 async function applyValuation(postId, value) {
+    // This uses the proper moaveze_apply_valuation endpoint which sets
+    // _moaveze_expert_value (separate from owner's price), NOT property_value
+    if (!confirm('آیا این ارزش‌گذاری به‌عنوان قیمت کارشناسی روی آگهی اعمال شود؟')) return;
     try {
-        await apiCall('exchanges/' + postId, 'PUT', { property_value: parseInt(value) });
-        showToast('ارزش‌گذاری با موفقیت به آگهی اعمال شد');
+        // First we need the valuation_id - get the latest one for this post
+        const formData = new FormData();
+        formData.append('action', 'moaveze_list_valuations');
+        formData.append('nonce', CONFIG.valuationNonce);
+        const resp = await fetch(CONFIG.adminUrl + 'admin-ajax.php', { method: 'POST', body: formData, credentials: 'same-origin' });
+        const data = await resp.json();
+        let valuationId = null;
+        if (data.success && data.data && data.data.items) {
+            const match = data.data.items.find(v => v.post_id == postId);
+            if (match) valuationId = match.id;
+        }
+        if (valuationId) {
+            await applyValuationById(valuationId);
+        } else {
+            showToast('ارزش‌گذاری‌ای برای اعمال یافت نشد', 'error');
+        }
     } catch(e) { showToast('خطا در اعمال ارزش', 'error'); }
+}
+
+async function applyValuationById(valuationId) {
+    try {
+        const formData = new FormData();
+        formData.append('action', 'moaveze_apply_valuation');
+        formData.append('nonce', CONFIG.valuationNonce);
+        formData.append('valuation_id', valuationId);
+        const resp = await fetch(CONFIG.adminUrl + 'admin-ajax.php', { method: 'POST', body: formData, credentials: 'same-origin' });
+        const data = await resp.json();
+        if (data.success) {
+            showToast('✅ قیمت کارشناسی با موفقیت روی آگهی اعمال شد');
+            loadValuationHistory();
+        } else {
+            showToast(data.data || 'خطا در اعمال', 'error');
+        }
+    } catch(e) { showToast('خطا در ارتباط', 'error'); }
 }
 
 async function loadValuationHistory() {
@@ -1585,6 +1619,7 @@ async function loadValuationHistory() {
                         <td>${item.created_at_jalali || ''}</td>
                         <td>
                             <button class="btn btn-secondary btn-xs" onclick="viewValuationDetail(${item.id})">جزئیات</button>
+                            ${item.status !== 'applied' ? '<button class="btn btn-success btn-xs" onclick="applyValuationById('+item.id+')">اعمال</button>' : '<span style="color:#10b981;font-size:11px;">✓ اعمال‌شده</span>'}
                             <button class="btn btn-danger btn-xs" onclick="deleteValuation(${item.id})">حذف</button>
                         </td>
                     </tr>`;
@@ -1697,14 +1732,18 @@ async function runAIValuationForProperty(propertyId) {
         const data = await resp.json();
         if (data.success) {
             const v = data.data;
-            showModal('نتیجه ارزش‌گذاری', `
+            resultDiv.innerHTML = `
                 <div class="val-result">
                     <div class="val-price">${v.value_formatted || shortPrice(v.estimated_value || v.suggested_value || v.value)}</div>
                     ${v.range ? '<div class="val-range">محدوده: ' + shortPrice(v.range.min) + ' تا ' + shortPrice(v.range.max) + '</div>' : ''}
                     ${v.confidence ? '<p style="font-size:13px;margin-top:8px;">سطح اطمینان: ' + v.confidence + '</p>' : ''}
                     ${v.methodology ? '<p style="font-size:12px;color:#64748b;margin-top:8px;">' + v.methodology + '</p>' : ''}
+                    <div style="display:flex;gap:8px;margin-top:16px;">
+                        ${v.valuation_id ? '<button class="btn btn-success btn-sm" onclick="applyValuationById('+v.valuation_id+')">✓ اعمال به‌عنوان قیمت کارشناسی</button>' : ''}
+                        <button class="btn btn-secondary btn-sm" onclick="navigateTo(\'valuation\');switchValTab(\'history\')">مشاهده تاریخچه</button>
+                    </div>
                 </div>
-            `);
+            `;
         } else {
             showToast(data.data || 'خطا در ارزش‌گذاری', 'error');
         }
