@@ -956,6 +956,17 @@ class Moaveze_AI_Valuation {
         // on-the-fly from fave_property_* meta, same as
         // render_valuation_metabox() does). Per explicit user request:
         // "ارزش گذاری روی موارد فروش در سایتمون هم اجرا شود".
+        //
+        // DASHBOARD FIX: the external dashboard sends post_id (WordPress
+        // post ID) for BOTH exchange and property listings. When
+        // post_id points to a moaveze_exchange post, we need to look up
+        // the corresponding exchange_id from the exchanges table.
+        if (!$exchange_id && $post_id && get_post_type($post_id) === 'moaveze_exchange') {
+            $exchange_id = (int) $wpdb->get_var($wpdb->prepare(
+                "SELECT id FROM {$wpdb->prefix}moaveze_exchanges WHERE post_id = %d", $post_id
+            ));
+        }
+
         if ($exchange_id) {
             $exchange = $wpdb->get_row($wpdb->prepare(
                 "SELECT * FROM {$wpdb->prefix}moaveze_exchanges WHERE id = %d", $exchange_id
@@ -964,6 +975,27 @@ class Moaveze_AI_Valuation {
         } elseif ($post_id && get_post_type($post_id) === 'property') {
             // Houzez property - build a lightweight exchange-like object
             $exchange = $this->build_houzez_exchange_object($post_id);
+        } elseif ($post_id && get_post_type($post_id) === 'moaveze_exchange' && !$exchange_id) {
+            // moaveze_exchange post but no row in exchanges table yet
+            // (edge case: listing created directly in wp-admin without
+            // going through submission form). Build from post meta.
+            $exchange = (object) array(
+                'id'             => 0,
+                'post_id'        => $post_id,
+                'property_type'  => '',
+                'property_value' => absint(get_post_meta($post_id, '_moaveze_property_value', true)),
+                'area_sqm'       => absint(get_post_meta($post_id, '_moaveze_area_sqm', true)),
+                'rooms'          => absint(get_post_meta($post_id, '_moaveze_rooms', true)),
+                'district'       => '',
+                'latitude'       => get_post_meta($post_id, '_moaveze_latitude', true),
+                'longitude'      => get_post_meta($post_id, '_moaveze_longitude', true),
+                'year_built'     => get_post_meta($post_id, '_moaveze_year_built', true),
+                'floor'          => get_post_meta($post_id, '_moaveze_floor', true),
+            );
+            $type_terms = get_the_terms($post_id, 'moaveze_property_type');
+            if ($type_terms && !is_wp_error($type_terms)) $exchange->property_type = $type_terms[0]->name;
+            $dist_terms = get_the_terms($post_id, 'moaveze_district');
+            if ($dist_terms && !is_wp_error($dist_terms)) $exchange->district = $dist_terms[0]->name;
         } else {
             wp_send_json_error('آگهی یافت نشد');
         }
